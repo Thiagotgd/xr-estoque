@@ -269,11 +269,18 @@
               <div id="scan-line"></div>
             </div>
           </div>
-          <div id="scan-hint">Aponte para o código de barras — mantenha firme e aguarde o foco</div>
+          <div id="scan-hint">Aponte para o código de barras</div>
         </div>
-        <div style="display:flex;gap:8px;margin-top:10px">
-          <button class="btn btn-ghost btn-sm" id="torch-btn" style="flex:0 0 auto">🔦 Lanterna</button>
-          <button class="btn btn-ghost btn-sm" id="camera-stop-btn" style="flex:1">⏹ Fechar câmera</button>
+        <div style="margin-top:10px;padding:0 4px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <span style="font-size:12px;color:var(--text-muted);white-space:nowrap">🔍 Zoom</span>
+            <input type="range" id="zoom-slider" min="1" max="4" step="0.1" value="1" style="flex:1;accent-color:var(--accent)">
+            <span id="zoom-label" style="font-size:12px;color:var(--text-muted);width:28px">1×</span>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-ghost btn-sm" id="torch-btn" style="flex:0 0 auto">🔦 Lanterna</button>
+            <button class="btn btn-ghost btn-sm" id="camera-stop-btn" style="flex:1">⏹ Fechar câmera</button>
+          </div>
         </div>
       </div>
       <div id="bipe-result"></div>
@@ -737,8 +744,31 @@ document.getElementById('torch-btn').addEventListener('click', async () => {
   try {
     torchOn = !torchOn;
     await track.applyConstraints({ advanced: [{ torch: torchOn }] });
-    document.getElementById('torch-btn').textContent = torchOn ? '🔦 Lanterna ON' : '🔦 Lanterna';
-  } catch(_) { toast('Lanterna não suportada neste dispositivo', 'warn'); }
+    document.getElementById('torch-btn').textContent = torchOn ? '🔦 ON' : '🔦 Lanterna';
+  } catch(_) { toast('Lanterna não suportada', 'warn'); }
+});
+
+// Zoom: tenta hardware primeiro, fallback pra CSS scale
+document.getElementById('zoom-slider').addEventListener('input', async (e) => {
+  const z = parseFloat(e.target.value);
+  document.getElementById('zoom-label').textContent = z.toFixed(1) + '×';
+  const video = document.getElementById('video-preview');
+  if (activeStream) {
+    const track = activeStream.getVideoTracks()[0];
+    try {
+      const caps = track.getCapabilities();
+      if (caps.zoom) {
+        const zoomVal = caps.zoom.min + (caps.zoom.max - caps.zoom.min) * ((z - 1) / 3);
+        await track.applyConstraints({ advanced: [{ zoom: zoomVal }] });
+        video.style.transform = '';
+        video.style.transformOrigin = '';
+        return;
+      }
+    } catch(_) {}
+  }
+  // Fallback: zoom via CSS scale centrado no frame
+  video.style.transform = `scale(${z})`;
+  video.style.transformOrigin = 'center center';
 });
 
 function stopCamera() {
