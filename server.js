@@ -555,6 +555,18 @@ const server = http.createServer(async (req, res) => {
     return res.end(logo);
   }
 
+  // Serve public static files (manifest, icons)
+  if (pathname.startsWith('/public/')) {
+    const filePath = path.join(__dirname, pathname);
+    try {
+      const data = fs.readFileSync(filePath);
+      const ext = path.extname(filePath);
+      const types = { '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png' };
+      res.writeHead(200, { 'Content-Type': types[ext] || 'application/octet-stream' });
+      return res.end(data);
+    } catch(_) { return sendJSON(res, 404, { error: 'Not found' }); }
+  }
+
   // Strip secret path prefix for API routes
   const apiPath = pathname.startsWith(SECRET_PATH + '/api/') 
     ? pathname.slice(SECRET_PATH.length) 

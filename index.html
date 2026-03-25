@@ -3,6 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="/public/manifest.json">
+<meta name="theme-color" content="#1a2a4a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="XR Estoque">
+<link rel="apple-touch-icon" href="/public/icon-192.svg">
 <title>📦 XR Estoque</title>
 <script src="https://unpkg.com/@zxing/library@latest/umd/index.min.js"></script>
 <style>
@@ -24,9 +31,11 @@
   html, body { height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; }
   
   /* Layout */
-  header { background: var(--card); border-bottom: 1px solid var(--border); padding: 0 20px; display: flex; align-items: center; gap: 16px; height: 56px; position: sticky; top: 0; z-index: 100; }
+  html, body { overflow-x: hidden; }
+  header { background: var(--card); border-bottom: 1px solid var(--border); padding: 0 20px; display: flex; align-items: center; gap: 16px; min-height: 56px; height: auto; position: sticky; top: 0; z-index: 100; width: 100%; box-sizing: border-box; flex-wrap: wrap; padding-top: 6px; padding-bottom: 6px; }
   .logo { font-size: 1.2rem; font-weight: 700; color: var(--accent); white-space: nowrap; }
-  .tabs { display: flex; gap: 4px; margin-left: auto; }
+  .tabs { display: flex; gap: 4px; margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
+  main { overflow-x: hidden; }
   .tab-btn { background: none; border: none; color: var(--text-muted); padding: 8px 16px; border-radius: var(--radius); cursor: pointer; font-size: 14px; font-weight: 500; transition: all .15s; white-space: nowrap; }
   .tab-btn:hover { background: var(--card2); color: var(--text); }
   .tab-btn.active { background: var(--accent); color: #fff; }
@@ -343,23 +352,18 @@
   <!-- ─── HISTÓRICO ─── -->
   <div class="tab-pane" id="tab-historico">
     <div class="card" style="margin-bottom:12px">
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <span class="section-title">📋 Histórico</span>
-        <select id="hist-tipo-filter" style="background:var(--card2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:13px">
+        <select id="hist-tipo-filter" style="background:var(--card2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:13px">
           <option value="">Todos</option>
-          <option value="entrada">Só entradas</option>
-          <option value="saida">Só saídas</option>
+          <option value="entrada">Entradas</option>
+          <option value="saida">Saídas</option>
         </select>
-        <input type="text" id="hist-search" placeholder="Filtrar produto..." style="background:var(--card2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:13px;flex:1;min-width:120px">
-        <button class="btn btn-ghost btn-sm" id="hist-refresh-btn">🔄 Atualizar</button>
+        <input type="text" id="hist-search" placeholder="Filtrar..." style="background:var(--card2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:13px;flex:1;min-width:80px">
+        <button class="btn btn-ghost btn-sm" id="hist-refresh-btn">🔄</button>
       </div>
     </div>
-    <div class="card table-wrap">
-      <table id="hist-table">
-        <thead><tr><th>Data</th><th>Produto</th><th>Tipo</th><th>Qtd</th><th>Obs</th><th></th></tr></thead>
-        <tbody id="hist-tbody"></tbody>
-      </table>
-    </div>
+    <div id="hist-list"></div>
     <div id="hist-pagination" style="display:flex;gap:8px;justify-content:center;margin-top:12px;flex-wrap:wrap"></div>
   </div>
 
@@ -775,17 +779,24 @@ async function loadHistorico() {
   if (search) params.set('search', search);
   const data = await api('GET', '/api/movimentacoes?' + params);
   histTotal = data.total;
-  const tbody = document.getElementById('hist-tbody');
-  tbody.innerHTML = data.rows.map(m => `
-    <tr>
-      <td style="white-space:nowrap">${m.data}</td>
-      <td>${escHtml(m.produto_nome)}</td>
-      <td><span style="color:${m.tipo==='entrada'?'#2ecc71':'#e74c3c'}">${m.tipo==='entrada'?'📥 Entrada':'📤 Saída'}</span></td>
-      <td><strong>${m.quantidade}</strong></td>
-      <td style="color:var(--text-muted);font-size:12px">${escHtml(m.obs||'')}</td>
-      <td><button class="btn btn-ghost btn-sm" onclick="openEditMov(${m.id},'${escJs(m.produto_nome)}','${m.tipo}',${m.quantidade},'${escJs(m.obs||'')}')">✏️</button></td>
-    </tr>
-  `).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">Nenhum registro</td></tr>';
+  const list = document.getElementById('hist-list');
+  if (!data.rows.length) {
+    list.innerHTML = '<div class="card" style="text-align:center;color:var(--text-muted)">Nenhum registro</div>';
+  } else {
+    list.innerHTML = data.rows.map(m => `
+      <div class="card" style="display:flex;align-items:center;gap:10px;margin-bottom:8px;padding:10px 14px">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(m.produto_nome)}</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:2px">${m.data}${m.obs ? ' · ' + escHtml(m.obs) : ''}</div>
+        </div>
+        <div style="text-align:right;white-space:nowrap">
+          <div style="color:${m.tipo==='entrada'?'#2ecc71':'#e74c3c'};font-size:13px">${m.tipo==='entrada'?'📥':'📤'} ${m.tipo}</div>
+          <div style="font-weight:700;font-size:16px">${m.quantidade}</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" style="padding:6px 8px" onclick="openEditMov(${m.id},'${escJs(m.produto_nome)}','${m.tipo}',${m.quantidade},'${escJs(m.obs||'')}')">✏️</button>
+      </div>
+    `).join('');
+  }
   // Paginação
   const pages = Math.ceil(histTotal / histLimit);
   const pag = document.getElementById('hist-pagination');
