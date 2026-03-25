@@ -1,0 +1,12 @@
+{
+  "name": "xr-estoque",
+  "version": "1.0.0",
+  "description": "Stock management for XR",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^9.4.3"
+  }
+}
