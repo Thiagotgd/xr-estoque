@@ -533,7 +533,10 @@ const server = http.createServer(async (req, res) => {
   const query = url.searchParams;
 
   // Auth check: must have xr_session cookie or be accessing root redirect
-  if (!isAuthed(req) && !pathname.startsWith('/xr-esto-r9k1')) {
+  // Liberar manifest e ícones sem autenticação (necessário para PWA)
+  if (pathname.startsWith('/public/') || pathname === '/manifest.json') {
+    // handled below
+  } else if (!isAuthed(req) && !pathname.startsWith('/xr-esto-r9k1')) {
     res.writeHead(302, { Location: SECRET_PATH });
     return res.end();
   }
