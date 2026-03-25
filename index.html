@@ -191,12 +191,32 @@
         </table>
       </div>
     </div>
+
+    <div class="card" style="margin-top:16px">
+      <div class="section-header">
+        <span class="section-title">🔥 Mais Consumidos</span>
+        <select id="consumo-periodo" onchange="loadDashboard()" style="background:#0a1628;color:#fff;border:1px solid #3498db40;padding:4px 8px;border-radius:6px;font-size:13px">
+          <option value="7">Últimos 7 dias</option>
+          <option value="30" selected>Últimos 30 dias</option>
+          <option value="90">Últimos 90 dias</option>
+          <option value="0">Tudo</option>
+        </select>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Produto</th><th>Total saídas</th><th>Média/dia</th></tr></thead>
+          <tbody id="dash-consumo-tbody"></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
   <!-- ─── BIPAGEM ─── -->
   <div class="tab-pane active" id="tab-bipagem">
     <div class="card">
-      <div class="section-header"><span class="section-title">📷 Bipagem</span></div>
+      <div class="section-header">
+        <span class="section-title">📷 Bipagem</span>
+      </div>
       <div class="bipe-input-wrap">
         <input type="text" id="bipe-input" class="bipe-input" placeholder="Bipe ou digite o código..." autocomplete="off" autofocus>
         <button class="btn btn-ghost btn-sm bipe-camera-btn" id="camera-btn">📷 Câmera</button>
@@ -237,7 +257,7 @@
     </div>
     <div class="card table-wrap">
       <table id="produtos-table">
-        <thead><tr><th>Nome</th><th>Atual</th><th>Mínimo</th><th>Ações</th></tr></thead>
+        <thead><tr><th>Nome</th><th>Atual</th><th>Mínimo</th><th>Qtd Compra</th><th>Ações</th></tr></thead>
         <tbody id="produtos-tbody"></tbody>
       </table>
     </div>
@@ -247,11 +267,11 @@
   <div class="tab-pane" id="tab-compras">
     <div class="compras-header">
       <span class="section-title">🛒 Lista de Compras</span>
-      <button class="btn btn-success" id="whatsapp-btn">📱 Compartilhar no WhatsApp</button>
+      <button class="btn btn-success" id="whatsapp-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:middle;margin-right:6px"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg> Compartilhar no WhatsApp</button>
     </div>
     <div class="card table-wrap">
       <table>
-        <thead><tr><th>Produto</th><th>Atual</th><th>Mínimo</th><th>Falta</th><th></th></tr></thead>
+        <thead><tr><th>Produto</th><th>Atual</th><th>Mínimo</th><th>Falta</th><th>Pedir</th><th></th></tr></thead>
         <tbody id="compras-tbody"></tbody>
       </table>
     </div>
@@ -356,7 +376,7 @@ let userRole = 'viewer';
   try {
     const me = await api('GET', '/api/me');
     userRole = me.role || 'viewer';
-    if (userRole !== 'admin') {
+    if (userRole !== 'admin') { // operator, viewer = acesso restrito
       // Hide admin-only tabs
       document.querySelectorAll('.tab-btn[data-tab="dashboard"], .tab-btn[data-tab="produtos"]').forEach(b => b.style.display = 'none');
       // Hide entrada button in bipagem
@@ -420,6 +440,25 @@ async function loadDashboard() {
           <td class="falta-cell">−${p.estoque_minimo - p.estoque_atual}</td>
         </tr>`).join('');
     }
+    // Consumo
+    const dias = parseInt(document.getElementById('consumo-periodo')?.value || '30', 10);
+    const consumo = await api('GET', `/api/consumo?dias=${dias}`);
+    const ctbody = document.getElementById('dash-consumo-tbody');
+    if (!consumo.length) {
+      ctbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--text-muted);padding:16px">Nenhum dado de saída ainda</td></tr>';
+    } else {
+      const max = consumo[0].total;
+      ctbody.innerHTML = consumo.map((r, i) => {
+        const pct = Math.round((r.total / max) * 100);
+        const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}.`;
+        return `<tr>
+          <td>${medal} ${escHtml(r.nome)}<div style="height:4px;background:#3498db;width:${pct}%;border-radius:2px;margin-top:4px;opacity:.6"></div></td>
+          <td style="font-weight:700;color:#3498db">${r.total}</td>
+          <td style="color:#aaa">${r.media_dia}/dia</td>
+        </tr>`;
+      }).join('');
+    }
+
   } catch(e) { toast('Erro ao carregar dashboard: ' + e.message, 'err'); }
 }
 
@@ -429,6 +468,9 @@ let allProdutos = [];
 async function refreshProdutos() {
   allProdutos = await api('GET', '/api/produtos');
 }
+
+// ─── Estado do bipe acumulativo ───────────────────────────────────────────────
+let bipeAtual = null; // { produto, codigo, qty }
 
 const bipeInput = document.getElementById('bipe-input');
 bipeInput.addEventListener('keydown', e => {
@@ -444,7 +486,6 @@ bipeInput.addEventListener('input', () => {
   clearTimeout(bipeTimer);
   bipeTimer = setTimeout(() => {
     const code = bipeInput.value.trim();
-    // Barcodes tend to end with \n or come very fast; if length > 3 and contains non-space, trigger
     if (code.length >= 4) lookupCode(code);
   }, 300);
 });
@@ -457,7 +498,20 @@ async function lookupCode(codigo) {
     if (data.novo) {
       renderNovo(codigo);
     } else {
-      renderFound(data.produto, codigo);
+      // Mesmo produto? Incrementa contador
+      if (bipeAtual && bipeAtual.produto.id === data.produto.id) {
+        bipeAtual.qty++;
+        document.getElementById('bipe-qty').value = bipeAtual.qty;
+        // Flash no campo pra indicar que incrementou
+        const qtyEl = document.getElementById('bipe-qty');
+        qtyEl.style.background = '#2ecc71';
+        setTimeout(() => qtyEl.style.background = '', 300);
+      } else {
+        // Produto diferente: registra anterior se tinha, abre novo
+        if (bipeAtual) await confirmarBipeAtual();
+        bipeAtual = { produto: data.produto, codigo, qty: 1 };
+        renderFound(data.produto, codigo);
+      }
     }
   } catch(e) { toast('Erro: ' + e.message, 'err'); }
 }
@@ -523,12 +577,23 @@ async function registrar(prodId, tipo, qtyId) {
   if (isNaN(qty) || qty <= 0) { toast('Quantidade inválida', 'err'); return; }
   try {
     const r = await api('POST', '/api/movimentacao', { produto_id: prodId, tipo, quantidade: qty, obs: 'Bipagem' });
+    bipeAtual = null;
     if (tipo === 'saida' && r.alerta_reposicao) {
       alertaReposicao(r.nome, r.estoque_atual, r.estoque_minimo);
     } else {
       toast(`${tipo === 'entrada' ? '📥' : '📤'} ${tipo === 'entrada' ? 'Entrada' : 'Saída'} registrada! Estoque: ${r.estoque_atual}`);
     }
     document.getElementById('bipe-result').innerHTML = '';
+    await refreshProdutos();
+  } catch(e) { toast('Erro: ' + e.message, 'err'); }
+}
+
+async function confirmarBipeAtual() {
+  if (!bipeAtual) return;
+  try {
+    const r = await api('POST', '/api/movimentacao', { produto_id: bipeAtual.produto.id, tipo: 'saida', quantidade: bipeAtual.qty, obs: 'Bipagem' });
+    bipeAtual = null;
+    if (r.alerta_reposicao) alertaReposicao(r.nome, r.estoque_atual, r.estoque_minimo);
     await refreshProdutos();
   } catch(e) { toast('Erro: ' + e.message, 'err'); }
 }
@@ -651,6 +716,7 @@ function renderProdutosTable() {
       <td>${escHtml(p.nome)}</td>
       <td><span class="badge ${alerta ? 'badge-warn' : 'badge-ok'}">${p.estoque_atual}</span></td>
       <td>${p.estoque_minimo}</td>
+      <td style="color:${p.qtd_compra > 0 ? '#3498db' : '#555'}">${p.qtd_compra > 0 ? p.qtd_compra : '—'}</td>
       <td>
         <button class="btn btn-ghost btn-sm" onclick="startEdit(${p.id})">✏️ Editar</button>
         <button class="btn btn-ghost btn-sm" onclick="gerarEtiqueta(${p.id}, '${escJs(p.nome)}')">🏷️ Etiqueta</button>
@@ -663,8 +729,9 @@ function renderProdutosTable() {
 function editRow(p) {
   return `<tr class="edit-row">
     <td><input type="text" id="edit-nome" value="${escHtml(p.nome)}" style="width:100%"></td>
-    <td><input type="number" id="edit-atual" value="${p.estoque_atual}" min="0" style="width:80px"></td>
-    <td><input type="number" id="edit-min" value="${p.estoque_minimo}" min="0" style="width:80px"></td>
+    <td><input type="number" id="edit-atual" value="${p.estoque_atual}" min="0" style="width:70px"></td>
+    <td><input type="number" id="edit-min" value="${p.estoque_minimo}" min="0" style="width:70px"></td>
+    <td><input type="number" id="edit-compra" value="${p.qtd_compra||0}" min="0" placeholder="qtd compra" style="width:90px" title="Quantidade a pedir quando estiver em alerta"></td>
     <td>
       <button class="btn btn-primary btn-sm" onclick="saveEdit(${p.id})">💾 Salvar</button>
       <button class="btn btn-ghost btn-sm" onclick="cancelEdit()">✕</button>
@@ -679,9 +746,10 @@ async function saveEdit(id) {
   const nome = document.getElementById('edit-nome').value.trim();
   const atual = parseInt(document.getElementById('edit-atual').value, 10);
   const min = parseInt(document.getElementById('edit-min').value, 10);
+  const compra = parseInt(document.getElementById('edit-compra').value || '0', 10);
   if (!nome) { toast('Nome obrigatório', 'err'); return; }
   try {
-    await api('PUT', '/api/produto/' + id, { nome, estoque_atual: atual, estoque_minimo: min });
+    await api('PUT', '/api/produto/' + id, { nome, estoque_atual: atual, estoque_minimo: min, qtd_compra: compra });
     editingId = null;
     toast('✅ Produto atualizado');
     await loadProdutos();
@@ -754,7 +822,8 @@ async function loadCompras() {
         <td><span class="badge badge-warn">${r.estoque_atual}</span></td>
         <td>${r.estoque_minimo}</td>
         <td class="falta-cell">−${r.falta}</td>
-        <td><button id="btn-pedido-${r.id}" class="btn btn-ghost btn-sm" onclick="markPedido(${r.id})">✅ Pedido feito</button></td>
+        <td style="color:#3498db;font-weight:700">${r.qtd_compra > 0 ? r.qtd_compra : r.falta}</td>
+        <td><button id="btn-pedido-${r.id}" class="btn btn-ghost btn-sm" onclick="markPedido(${r.id})">🛒 Fazer pedido</button></td>
       </tr>`).join('');
   } catch(e) { toast('Erro: ' + e.message, 'err'); }
 }
@@ -764,7 +833,7 @@ function markPedido(id) {
   const btn = document.getElementById('btn-pedido-' + id);
   if (!row || !btn) return;
   const done = row.classList.toggle('row-done');
-  btn.textContent = done ? '↩️ Desfazer' : '✅ Pedido feito';
+  btn.textContent = done ? '✅ Pedido feito' : '🛒 Fazer pedido';
   btn.style.color = done ? '#aaa' : '';
 }
 

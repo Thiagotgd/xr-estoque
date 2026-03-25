@@ -202,14 +202,30 @@ function isAuthed(req) {
   return !!cookies['xr_session'];
 }
 
-function getUserRole(req) {
-  // Traefik forwardAuth injects X-Auth-Role header
-  return (req.headers['x-auth-role'] || 'viewer').toLowerCase();
+async function getUserRole(req) {
+  // Ask auth server directly using the user's session cookie
+  const cookies = parseCookies(req);
+  const token = cookies['xr_session'];
+  if (!token) return 'viewer';
+  try {
+    const resp = await new Promise((resolve, reject) => {
+      const options = { hostname: '127.0.0.1', port: 8086, path: '/auth/role', method: 'GET',
+        headers: { 'Cookie': `xr_session=${token}` } };
+      const r = require('http').request(options, res => {
+        let d = ''; res.on('data', c => d += c); res.on('end', () => resolve(d));
+      });
+      r.on('error', reject); r.end();
+    });
+    const data = JSON.parse(resp);
+    return (data.role || 'viewer').toLowerCase();
+  } catch(e) { return 'viewer'; }
 }
 
-function isAdmin(req) {
-  return getUserRole(req) === 'admin';
+async function isAdmin(req) {
+  const role = await getUserRole(req);
+  return role === 'admin';
 }
+// operator and viewer both have restricted access (no entrada, no produtos mgmt)
 
 function parseURL(urlStr) {
   try { return new URL(urlStr, 'http://localhost'); }
@@ -222,7 +238,8 @@ async function handleAPI(req, res, pathname, query) {
 
   // GET /api/me — user role
   if (method === 'GET' && pathname === '/api/me') {
-    return sendJSON(res, 200, { role: getUserRole(req) });
+    const role = await getUserRole(req);
+    return sendJSON(res, 200, { role });
   }
 
   // Admin-only routes
@@ -283,7 +300,8 @@ async function handleAPI(req, res, pathname, query) {
     const nome = body.nome !== undefined ? body.nome.trim() : existing.nome;
     const min = body.estoque_minimo !== undefined ? body.estoque_minimo : existing.estoque_minimo;
     const atual = body.estoque_atual !== undefined ? body.estoque_atual : existing.estoque_atual;
-    db.prepare('UPDATE produtos SET nome=?, estoque_minimo=?, estoque_atual=? WHERE id=?').run(nome, min, atual, id);
+    const qtdCompra = parseInt(body.qtd_compra || 0, 10);
+    db.prepare('UPDATE produtos SET nome=?, estoque_minimo=?, estoque_atual=?, qtd_compra=? WHERE id=?').run(nome, min, atual, qtdCompra, id);
     return sendJSON(res, 200, { ok: true });
   }
 
@@ -367,10 +385,29 @@ async function handleAPI(req, res, pathname, query) {
     return sendJSON(res, 200, rows);
   }
 
+  // GET /api/consumo?dias=30
+  if (method === 'GET' && pathname === '/api/consumo') {
+    const dias = parseInt(query.get('dias') || '30', 10);
+    let where = "tipo = 'saida'";
+    if (dias > 0) {
+      const desde = new Date(Date.now() - dias * 86400000).toISOString().slice(0,10);
+      where += ` AND data >= '${desde}'`;
+    }
+    const rows = db.prepare(`
+      SELECT p.nome, SUM(m.quantidade) as total, COUNT(*) as vezes,
+             ROUND(SUM(m.quantidade) * 1.0 / MAX(1, ${dias > 0 ? dias : 365}), 1) as media_dia
+      FROM movimentacoes m JOIN produtos p ON m.produto_id = p.id
+      WHERE ${where}
+      GROUP BY m.produto_id ORDER BY total DESC LIMIT 15
+    `).all();
+    return sendJSON(res, 200, rows);
+  }
+
   // GET /api/compras/whatsapp — must come before /api/compras
   if (method === 'GET' && pathname === '/api/compras/whatsapp') {
     const rows = db.prepare(`
-      SELECT nome, estoque_atual, estoque_minimo, (estoque_minimo - estoque_atual) as falta
+      SELECT nome, estoque_atual, estoque_minimo, qtd_compra,
+             (estoque_minimo - estoque_atual) as falta
       FROM produtos
       WHERE estoque_minimo > 0 AND estoque_atual < estoque_minimo
       ORDER BY falta DESC
@@ -380,7 +417,8 @@ async function handleAPI(req, res, pathname, query) {
     }
     const lines = ['*📦 Compras XR*', ''];
     for (const r of rows) {
-      lines.push(`${r.nome} - ${r.falta}`);
+      const qtd = r.qtd_compra > 0 ? r.qtd_compra : r.falta;
+      lines.push(`${r.nome} - ${qtd}`);
     }
     return sendJSON(res, 200, { text: lines.join('\n') });
   }
