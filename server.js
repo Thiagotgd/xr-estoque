@@ -202,6 +202,15 @@ function isAuthed(req) {
   return !!cookies['xr_session'];
 }
 
+function getUserRole(req) {
+  // Traefik forwardAuth injects X-Auth-Role header
+  return (req.headers['x-auth-role'] || 'viewer').toLowerCase();
+}
+
+function isAdmin(req) {
+  return getUserRole(req) === 'admin';
+}
+
 function parseURL(urlStr) {
   try { return new URL(urlStr, 'http://localhost'); }
   catch { return null; }
@@ -210,6 +219,32 @@ function parseURL(urlStr) {
 // ─── API Router ────────────────────────────────────────────────────────────────
 async function handleAPI(req, res, pathname, query) {
   const method = req.method;
+
+  // GET /api/me — user role
+  if (method === 'GET' && pathname === '/api/me') {
+    return sendJSON(res, 200, { role: getUserRole(req) });
+  }
+
+  // Admin-only routes
+  const adminRoutes = [
+    [/^\/api\/produto$/, 'POST'],
+    [/^\/api\/produto\/\d+$/, 'PUT'],
+    [/^\/api\/produto\/\d+$/, 'DELETE'],
+    [/^\/api\/bipe$/, 'POST'],
+    [/^\/api\/etiqueta\/\d+$/, 'POST'],
+    [/^\/api\/movimentacao$/, 'POST', (b) => b.tipo === 'entrada'], // só entrada é admin
+  ];
+  for (const [pattern, meth, check] of adminRoutes) {
+    if (method === meth && pattern.test(pathname)) {
+      if (check) {
+        const body = await parseBody(req);
+        req._body = body;
+        if (check(body) && !isAdmin(req)) return sendJSON(res, 403, { error: 'Acesso restrito ao admin' });
+      } else if (!isAdmin(req)) {
+        return sendJSON(res, 403, { error: 'Acesso restrito ao admin' });
+      }
+    }
+  }
 
   // GET /api/produtos
   if (method === 'GET' && pathname === '/api/produtos') {
@@ -309,7 +344,14 @@ async function handleAPI(req, res, pathname, query) {
     updateTx();
 
     const updated = db.prepare('SELECT * FROM produtos WHERE id = ?').get(produto_id);
-    return sendJSON(res, 201, { ok: true, estoque_atual: updated.estoque_atual });
+    const alerta = tipo === 'saida' && updated.estoque_minimo > 0 && updated.estoque_atual < updated.estoque_minimo;
+    return sendJSON(res, 201, {
+      ok: true,
+      estoque_atual: updated.estoque_atual,
+      nome: updated.nome,
+      alerta_reposicao: alerta,
+      estoque_minimo: updated.estoque_minimo
+    });
   }
 
   // GET /api/movimentacoes
@@ -336,12 +378,10 @@ async function handleAPI(req, res, pathname, query) {
     if (rows.length === 0) {
       return sendJSON(res, 200, { text: 'Estoque OK - nenhum item abaixo do mínimo! ✅' });
     }
-    const lines = ['*📦 Lista de Compras XR Estoque*', ''];
+    const lines = ['*📦 Compras XR*', ''];
     for (const r of rows) {
-      lines.push(`• ${r.nome}: faltam *${r.falta}* (atual: ${r.estoque_atual}, mín: ${r.estoque_minimo})`);
+      lines.push(`${r.nome} - ${r.falta}`);
     }
-    lines.push('');
-    lines.push(`_Gerado em ${new Date().toLocaleString('pt-BR')}_`);
     return sendJSON(res, 200, { text: lines.join('\n') });
   }
 

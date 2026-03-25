@@ -273,12 +273,60 @@
   </div>
 </div>
 
+<!-- Alerta de reposição -->
+<div id="alerta-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:10000;display:none;align-items:center;justify-content:center">
+  <div style="background:#1a2a4a;border:2px solid #e74c3c;border-radius:16px;padding:32px;max-width:380px;width:90%;text-align:center;animation:shake .4s ease">
+    <div style="font-size:48px;margin-bottom:12px">⚠️</div>
+    <h2 style="color:#e74c3c;margin:0 0 8px">REPOR ESTOQUE!</h2>
+    <p id="alerta-nome" style="font-size:18px;font-weight:bold;margin:0 0 8px"></p>
+    <p id="alerta-info" style="color:#aaa;margin:0 0 24px;font-size:14px"></p>
+    <button onclick="fecharAlerta()" style="background:#e74c3c;color:white;border:none;padding:12px 32px;border-radius:8px;font-size:16px;cursor:pointer;font-weight:bold">OK, entendido</button>
+  </div>
+</div>
+
+<style>
+@keyframes shake {
+  0%,100%{transform:translateX(0)}
+  20%{transform:translateX(-8px)}
+  40%{transform:translateX(8px)}
+  60%{transform:translateX(-6px)}
+  80%{transform:translateX(6px)}
+}
+</style>
+
 <div id="toast"></div>
 
 <script>
 const API = '';  // same origin
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
+// ─── Alerta Reposição ─────────────────────────────────────────────────────────
+function alertaReposicao(nome, atual, minimo) {
+  // Som de alerta
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    [440, 550, 440, 330].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.frequency.value = freq;
+      osc.type = 'square';
+      gain.gain.setValueAtTime(0.3, ctx.currentTime + i * 0.15);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + i * 0.15 + 0.12);
+      osc.start(ctx.currentTime + i * 0.15);
+      osc.stop(ctx.currentTime + i * 0.15 + 0.15);
+    });
+  } catch(e) {}
+  // Modal
+  document.getElementById('alerta-nome').textContent = nome;
+  document.getElementById('alerta-info').textContent = `Estoque atual: ${atual} unidade${atual !== 1 ? 's' : ''} — Mínimo: ${minimo}`;
+  const modal = document.getElementById('alerta-modal');
+  modal.style.display = 'flex';
+}
+function fecharAlerta() {
+  document.getElementById('alerta-modal').style.display = 'none';
+}
+
 let toastTimer;
 function toast(msg, type='ok') {
   const el = document.getElementById('toast');
@@ -302,6 +350,26 @@ async function api(method, path, body) {
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
 let activeTab = 'bipagem';
+// ─── Role-based UI ────────────────────────────────────────────────────────────
+let userRole = 'viewer';
+(async () => {
+  try {
+    const me = await api('GET', '/api/me');
+    userRole = me.role || 'viewer';
+    if (userRole !== 'admin') {
+      // Hide admin-only tabs
+      document.querySelectorAll('.tab-btn[data-tab="dashboard"], .tab-btn[data-tab="produtos"]').forEach(b => b.style.display = 'none');
+      // Hide entrada button in bipagem
+      document.querySelectorAll('.btn-entrada-admin').forEach(el => el.style.display = 'none');
+      // Set active tab to bipagem
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+      document.getElementById('tab-bipagem').classList.add('active');
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelector('.tab-btn[data-tab="bipagem"]').classList.add('active');
+    }
+  } catch(e) {}
+})();
+
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     const tab = btn.dataset.tab;
@@ -409,7 +477,7 @@ function renderFound(produto, codigo) {
         <button class="qty-btn" onclick="adjQty('bipe-qty', 1)">+</button>
       </div>
       <div class="action-row">
-        <button class="btn btn-success" onclick="registrar(${produto.id}, 'entrada', 'bipe-qty')">📥 Entrada</button>
+        <button class="btn btn-success btn-entrada-admin" onclick="registrar(${produto.id}, 'entrada', 'bipe-qty')">📥 Entrada</button>
         <button class="btn btn-danger" onclick="registrar(${produto.id}, 'saida', 'bipe-qty')">📤 Saída</button>
       </div>
     </div>`;
@@ -455,7 +523,11 @@ async function registrar(prodId, tipo, qtyId) {
   if (isNaN(qty) || qty <= 0) { toast('Quantidade inválida', 'err'); return; }
   try {
     const r = await api('POST', '/api/movimentacao', { produto_id: prodId, tipo, quantidade: qty, obs: 'Bipagem' });
-    toast(`${tipo === 'entrada' ? '📥' : '📤'} ${tipo === 'entrada' ? 'Entrada' : 'Saída'} registrada! Estoque: ${r.estoque_atual}`);
+    if (tipo === 'saida' && r.alerta_reposicao) {
+      alertaReposicao(r.nome, r.estoque_atual, r.estoque_minimo);
+    } else {
+      toast(`${tipo === 'entrada' ? '📥' : '📤'} ${tipo === 'entrada' ? 'Entrada' : 'Saída'} registrada! Estoque: ${r.estoque_atual}`);
+    }
     document.getElementById('bipe-result').innerHTML = '';
     await refreshProdutos();
   } catch(e) { toast('Erro: ' + e.message, 'err'); }
@@ -530,7 +602,7 @@ async function selectNameProduct(id) {
         <button class="qty-btn" onclick="adjQty('ns-qty', 1)">+</button>
       </div>
       <div class="action-row">
-        <button class="btn btn-success" onclick="registrarNs(${produto.id}, 'entrada')">📥 Entrada</button>
+        <button class="btn btn-success btn-entrada-admin" onclick="registrarNs(${produto.id}, 'entrada')">📥 Entrada</button>
         <button class="btn btn-danger" onclick="registrarNs(${produto.id}, 'saida')">📤 Saída</button>
       </div>
     </div>`;
@@ -682,14 +754,18 @@ async function loadCompras() {
         <td><span class="badge badge-warn">${r.estoque_atual}</span></td>
         <td>${r.estoque_minimo}</td>
         <td class="falta-cell">−${r.falta}</td>
-        <td><button class="btn btn-ghost btn-sm" onclick="markPedido(${r.id})">✅ Pedido feito</button></td>
+        <td><button id="btn-pedido-${r.id}" class="btn btn-ghost btn-sm" onclick="markPedido(${r.id})">✅ Pedido feito</button></td>
       </tr>`).join('');
   } catch(e) { toast('Erro: ' + e.message, 'err'); }
 }
 
 function markPedido(id) {
   const row = document.getElementById('compra-row-' + id);
-  if (row) row.classList.add('row-done');
+  const btn = document.getElementById('btn-pedido-' + id);
+  if (!row || !btn) return;
+  const done = row.classList.toggle('row-done');
+  btn.textContent = done ? '↩️ Desfazer' : '✅ Pedido feito';
+  btn.style.color = done ? '#aaa' : '';
 }
 
 document.getElementById('whatsapp-btn').addEventListener('click', async () => {
