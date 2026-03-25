@@ -170,11 +170,16 @@ function nextXRCode() {
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 function parseBody(req) {
+  if (req._body) return Promise.resolve(req._body);
   return new Promise((resolve, reject) => {
     let data = '';
     req.on('data', chunk => data += chunk);
     req.on('end', () => {
-      try { resolve(JSON.parse(data || '{}')); }
+      try {
+        const parsed = JSON.parse(data || '{}');
+        req._body = parsed;
+        resolve(parsed);
+      }
       catch (e) { resolve({}); }
     });
     req.on('error', reject);
@@ -393,14 +398,55 @@ async function handleAPI(req, res, pathname, query) {
   // GET /api/movimentacoes
   if (method === 'GET' && pathname === '/api/movimentacoes') {
     const produto_id = query.get('produto_id');
-    const limit = parseInt(query.get('limit') || '50', 10);
-    let rows;
-    if (produto_id) {
-      rows = db.prepare('SELECT * FROM movimentacoes WHERE produto_id = ? ORDER BY created_at DESC LIMIT ?').all(produto_id, limit);
-    } else {
-      rows = db.prepare('SELECT m.*, p.nome as produto_nome FROM movimentacoes m JOIN produtos p ON p.id = m.produto_id ORDER BY m.created_at DESC LIMIT ?').all(limit);
-    }
-    return sendJSON(res, 200, rows);
+    const tipo = query.get('tipo');
+    const search = query.get('search') || '';
+    const limit = parseInt(query.get('limit') || '100', 10);
+    const offset = parseInt(query.get('offset') || '0', 10);
+    let where = '1=1';
+    const params = [];
+    if (produto_id) { where += ' AND m.produto_id = ?'; params.push(produto_id); }
+    if (tipo) { where += ' AND m.tipo = ?'; params.push(tipo); }
+    if (search) { where += ' AND p.nome LIKE ?'; params.push('%' + search + '%'); }
+    const total = db.prepare(`SELECT COUNT(*) as n FROM movimentacoes m JOIN produtos p ON p.id = m.produto_id WHERE ${where}`).get(...params).n;
+    const rows = db.prepare(`SELECT m.*, p.nome as produto_nome FROM movimentacoes m JOIN produtos p ON p.id = m.produto_id WHERE ${where} ORDER BY m.id DESC LIMIT ? OFFSET ?`).all(...params, limit, offset);
+    return sendJSON(res, 200, { total, rows });
+  }
+
+  // PUT /api/movimentacao/:id — admin only
+  if (method === 'PUT' && pathname.match(/^\/api\/movimentacao\/\d+$/)) {
+    if (!await isAdmin(req)) return sendJSON(res, 403, { error: 'Admin only' });
+    const id = parseInt(pathname.split('/').pop(), 10);
+    const body = await parseBody(req);
+    const mov = db.prepare('SELECT * FROM movimentacoes WHERE id = ?').get(id);
+    if (!mov) return sendJSON(res, 404, { error: 'Não encontrado' });
+    const novoTipo = body.tipo || mov.tipo;
+    const novaQty = parseInt(body.quantidade, 10) || mov.quantidade;
+    const novaObs = body.obs !== undefined ? body.obs : mov.obs;
+    // Revert old, apply new to produto estoque
+    db.transaction(() => {
+      // Revert old mov
+      if (mov.tipo === 'entrada') db.prepare('UPDATE produtos SET estoque_atual = estoque_atual - ? WHERE id = ?').run(mov.quantidade, mov.produto_id);
+      else db.prepare('UPDATE produtos SET estoque_atual = estoque_atual + ? WHERE id = ?').run(mov.quantidade, mov.produto_id);
+      // Apply new
+      if (novoTipo === 'entrada') db.prepare('UPDATE produtos SET estoque_atual = estoque_atual + ? WHERE id = ?').run(novaQty, mov.produto_id);
+      else db.prepare('UPDATE produtos SET estoque_atual = MAX(0, estoque_atual - ?) WHERE id = ?').run(novaQty, mov.produto_id);
+      db.prepare('UPDATE movimentacoes SET tipo = ?, quantidade = ?, obs = ? WHERE id = ?').run(novoTipo, novaQty, novaObs, id);
+    })();
+    return sendJSON(res, 200, { ok: true });
+  }
+
+  // DELETE /api/movimentacao/:id — admin only
+  if (method === 'DELETE' && pathname.match(/^\/api\/movimentacao\/\d+$/)) {
+    if (!await isAdmin(req)) return sendJSON(res, 403, { error: 'Admin only' });
+    const id = parseInt(pathname.split('/').pop(), 10);
+    const mov = db.prepare('SELECT * FROM movimentacoes WHERE id = ?').get(id);
+    if (!mov) return sendJSON(res, 404, { error: 'Não encontrado' });
+    db.transaction(() => {
+      if (mov.tipo === 'entrada') db.prepare('UPDATE produtos SET estoque_atual = estoque_atual - ? WHERE id = ?').run(mov.quantidade, mov.produto_id);
+      else db.prepare('UPDATE produtos SET estoque_atual = estoque_atual + ? WHERE id = ?').run(mov.quantidade, mov.produto_id);
+      db.prepare('DELETE FROM movimentacoes WHERE id = ?').run(id);
+    })();
+    return sendJSON(res, 200, { ok: true });
   }
 
   // GET /api/consumo?dias=30

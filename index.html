@@ -197,6 +197,7 @@
     <button class="tab-btn active" data-tab="bipagem"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:middle;margin-right:4px"><path d="M2 4h4v16H2V4zm6 0h2v16H8V4zm4 0h1v16h-1V4zm3 0h2v16h-2V4zm4 0h3v16h-3V4z"/></svg>Bipagem</button>
     <button class="tab-btn" data-tab="produtos">Produtos</button>
     <button class="tab-btn" data-tab="compras">Compras</button>
+    <button class="tab-btn" data-tab="historico">📋 Histórico</button>
   </div>
 </header>
 
@@ -257,7 +258,11 @@
       </div>
       <div class="bipe-input-wrap">
         <input type="text" id="bipe-input" class="bipe-input" placeholder="Bipe ou digite o código..." autocomplete="off" autofocus>
-        <button class="btn btn-ghost btn-sm bipe-camera-btn" id="camera-btn"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:middle;margin-right:5px"><path d="M2 4h4v16H2V4zm6 0h2v16H8V4zm4 0h1v16h-1V4zm3 0h2v16h-2V4zm4 0h3v16h-3V4z"/></svg> Leitor</button>
+        <button class="btn btn-ghost btn-sm bipe-camera-btn" id="camera-btn">📷 Leitor</button>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <button class="btn btn-ghost btn-sm" id="photo-capture-btn" style="flex:1;font-size:13px">📸 Foto (câmera nativa)</button>
+        <input type="file" id="photo-capture-input" accept="image/*" capture="environment" style="display:none">
       </div>
       <div id="camera-area" style="display:none">
         <div id="camera-wrap">
@@ -335,7 +340,62 @@
     </div>
   </div>
 
+  <!-- ─── HISTÓRICO ─── -->
+  <div class="tab-pane" id="tab-historico">
+    <div class="card" style="margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span class="section-title">📋 Histórico</span>
+        <select id="hist-tipo-filter" style="background:var(--card2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:13px">
+          <option value="">Todos</option>
+          <option value="entrada">Só entradas</option>
+          <option value="saida">Só saídas</option>
+        </select>
+        <input type="text" id="hist-search" placeholder="Filtrar produto..." style="background:var(--card2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:13px;flex:1;min-width:120px">
+        <button class="btn btn-ghost btn-sm" id="hist-refresh-btn">🔄 Atualizar</button>
+      </div>
+    </div>
+    <div class="card table-wrap">
+      <table id="hist-table">
+        <thead><tr><th>Data</th><th>Produto</th><th>Tipo</th><th>Qtd</th><th>Obs</th><th></th></tr></thead>
+        <tbody id="hist-tbody"></tbody>
+      </table>
+    </div>
+    <div id="hist-pagination" style="display:flex;gap:8px;justify-content:center;margin-top:12px;flex-wrap:wrap"></div>
+  </div>
+
 </main>
+
+<!-- Edit Movimentacao Modal -->
+<div class="modal-overlay" id="edit-mov-modal" style="display:none;position:fixed;inset:0;background:#0008;z-index:1000;align-items:center;justify-content:center">
+  <div style="background:var(--card);border-radius:12px;padding:20px;width:90%;max-width:360px">
+    <div style="font-weight:700;font-size:1.1rem;margin-bottom:16px">✏️ Editar movimentação</div>
+    <input type="hidden" id="edit-mov-id">
+    <div class="form-field" style="margin-bottom:12px">
+      <label>Produto</label>
+      <input type="text" id="edit-mov-nome" disabled style="background:var(--card2);color:var(--text-muted);border:1px solid var(--border);border-radius:6px;padding:8px;width:100%">
+    </div>
+    <div class="form-field" style="margin-bottom:12px">
+      <label>Tipo</label>
+      <select id="edit-mov-tipo" style="background:var(--card2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px;width:100%">
+        <option value="entrada">📥 Entrada</option>
+        <option value="saida">📤 Saída</option>
+      </select>
+    </div>
+    <div class="form-field" style="margin-bottom:12px">
+      <label>Quantidade</label>
+      <input type="number" id="edit-mov-qty" min="1" style="background:var(--card2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px;width:100%">
+    </div>
+    <div class="form-field" style="margin-bottom:16px">
+      <label>Observação</label>
+      <input type="text" id="edit-mov-obs" style="background:var(--card2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px;width:100%">
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-danger" id="edit-mov-delete" style="flex:0 0 auto">🗑️</button>
+      <button class="btn btn-ghost" onclick="document.getElementById('edit-mov-modal').style.display='none'" style="flex:1">Cancelar</button>
+      <button class="btn btn-primary" id="edit-mov-save" style="flex:1">Salvar</button>
+    </div>
+  </div>
+</div>
 
 <!-- Label Modal -->
 <div class="modal-overlay" id="label-modal">
@@ -459,6 +519,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     if (tab === 'dashboard') loadDashboard();
     if (tab === 'produtos') loadProdutos();
     if (tab === 'compras') loadCompras();
+    if (tab === 'historico') { histPage = 0; loadHistorico(); }
     if (tab === 'bipagem') {
       setTimeout(() => document.getElementById('bipe-input').focus(), 100);
     }
@@ -576,7 +637,8 @@ async function lookupCode(codigo) {
 
 function renderFound(produto, codigo) {
   const alerta = produto.estoque_minimo > 0 && produto.estoque_atual < produto.estoque_minimo;
-  document.getElementById('bipe-result').innerHTML = `
+  const el = document.getElementById('bipe-result');
+  el.innerHTML = `
     <div class="result-card found">
       <div class="product-name">${escHtml(produto.nome)}</div>
       <div style="margin-bottom:12px">
@@ -594,6 +656,7 @@ function renderFound(produto, codigo) {
         <button class="btn btn-ghost btn-sm" onclick="revincularCodigo('${escJs(codigo)}', ${produto.id})" title="Vincular este código a outro produto">🔄 Código errado?</button>
       </div>
     </div>`;
+  setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
 }
 
 function renderNovo(codigo) {
@@ -616,6 +679,7 @@ function renderNovo(codigo) {
       </div>
       <button class="btn btn-primary" onclick="vincularERegistrar('${escJs(codigo)}')">🔗 Vincular + registrar entrada</button>
     </div>`;
+  setTimeout(() => document.getElementById('bipe-result').scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
 }
 
 async function vincularERegistrar(codigo) {
@@ -693,22 +757,133 @@ function adjQty(id, delta) {
 let codeReader = null;
 let activeStream = null;
 
+// ─── Selecionar tudo ao focar em campos de quantidade ─────────────────────────
+document.addEventListener('focus', (e) => {
+  if (e.target && e.target.type === 'number' && (e.target.id === 'bipe-qty' || e.target.id === 'novo-qty' || e.target.id === 'edit-mov-qty')) {
+    e.target.select();
+  }
+}, true);
+
+// ─── Histórico ────────────────────────────────────────────────────────────────
+let histPage = 0, histLimit = 30, histTotal = 0;
+
+async function loadHistorico() {
+  const tipo = document.getElementById('hist-tipo-filter').value;
+  const search = document.getElementById('hist-search').value.trim();
+  const params = new URLSearchParams({ limit: histLimit, offset: histPage * histLimit });
+  if (tipo) params.set('tipo', tipo);
+  if (search) params.set('search', search);
+  const data = await api('GET', '/api/movimentacoes?' + params);
+  histTotal = data.total;
+  const tbody = document.getElementById('hist-tbody');
+  tbody.innerHTML = data.rows.map(m => `
+    <tr>
+      <td style="white-space:nowrap">${m.data}</td>
+      <td>${escHtml(m.produto_nome)}</td>
+      <td><span style="color:${m.tipo==='entrada'?'#2ecc71':'#e74c3c'}">${m.tipo==='entrada'?'📥 Entrada':'📤 Saída'}</span></td>
+      <td><strong>${m.quantidade}</strong></td>
+      <td style="color:var(--text-muted);font-size:12px">${escHtml(m.obs||'')}</td>
+      <td><button class="btn btn-ghost btn-sm" onclick="openEditMov(${m.id},'${escJs(m.produto_nome)}','${m.tipo}',${m.quantidade},'${escJs(m.obs||'')}')">✏️</button></td>
+    </tr>
+  `).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">Nenhum registro</td></tr>';
+  // Paginação
+  const pages = Math.ceil(histTotal / histLimit);
+  const pag = document.getElementById('hist-pagination');
+  pag.innerHTML = pages > 1 ? Array.from({length: Math.min(pages,10)}, (_,i) => 
+    `<button class="btn ${i===histPage?'btn-primary':'btn-ghost'} btn-sm" onclick="histPage=${i};loadHistorico()">${i+1}</button>`
+  ).join('') : '';
+}
+
+function openEditMov(id, nome, tipo, qty, obs) {
+  document.getElementById('edit-mov-id').value = id;
+  document.getElementById('edit-mov-nome').value = nome;
+  document.getElementById('edit-mov-tipo').value = tipo;
+  document.getElementById('edit-mov-qty').value = qty;
+  document.getElementById('edit-mov-obs').value = obs;
+  document.getElementById('edit-mov-modal').style.display = 'flex';
+}
+
+document.getElementById('edit-mov-save').addEventListener('click', async () => {
+  const id = document.getElementById('edit-mov-id').value;
+  const tipo = document.getElementById('edit-mov-tipo').value;
+  const qty = parseInt(document.getElementById('edit-mov-qty').value, 10);
+  const obs = document.getElementById('edit-mov-obs').value;
+  if (!qty || qty <= 0) { toast('Quantidade inválida', 'err'); return; }
+  try {
+    await api('PUT', '/api/movimentacao/' + id, { tipo, quantidade: qty, obs });
+    document.getElementById('edit-mov-modal').style.display = 'none';
+    toast('✅ Movimentação atualizada!');
+    await loadHistorico();
+    await refreshProdutos();
+  } catch(e) { toast('Erro: ' + e.message, 'err'); }
+});
+
+document.getElementById('edit-mov-delete').addEventListener('click', async () => {
+  if (!confirm('Excluir esta movimentação? O estoque será revertido.')) return;
+  const id = document.getElementById('edit-mov-id').value;
+  try {
+    await api('DELETE', '/api/movimentacao/' + id);
+    document.getElementById('edit-mov-modal').style.display = 'none';
+    toast('🗑️ Movimentação excluída');
+    await loadHistorico();
+    await refreshProdutos();
+  } catch(e) { toast('Erro: ' + e.message, 'err'); }
+});
+
+document.getElementById('hist-refresh-btn').addEventListener('click', () => { histPage = 0; loadHistorico(); });
+document.getElementById('hist-tipo-filter').addEventListener('change', () => { histPage = 0; loadHistorico(); });
+let histSearchTimer;
+document.getElementById('hist-search').addEventListener('input', () => {
+  clearTimeout(histSearchTimer);
+  histSearchTimer = setTimeout(() => { histPage = 0; loadHistorico(); }, 400);
+});
+
+// ─── Barcode detection: native BarcodeDetector → ZXing fallback ──────────────
+const useNativeDetector = ('BarcodeDetector' in window);
+let nativeDetector = null;
+if (useNativeDetector) {
+  try { nativeDetector = new BarcodeDetector({ formats: ['code_128','ean_13','ean_8','upc_a','upc_e','code_39','code_93','itf','qr_code','data_matrix','aztec','pdf417'] }); }
+  catch(_) { nativeDetector = new BarcodeDetector(); }
+}
+
+let nativeScanLoop = null;
+
+async function startNativeScan(video) {
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  let lastScan = 0;
+
+  async function tick() {
+    if (!activeStream) return;
+    if (video.readyState >= 2 && Date.now() - lastScan > 150) {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0);
+      try {
+        const results = await nativeDetector.detect(canvas);
+        if (results.length > 0) {
+          stopCamera();
+          lookupCode(results[0].rawValue);
+          return;
+        }
+      } catch(_) {}
+      lastScan = Date.now();
+    }
+    nativeScanLoop = requestAnimationFrame(tick);
+  }
+  nativeScanLoop = requestAnimationFrame(tick);
+}
+
 document.getElementById('camera-btn').addEventListener('click', async () => {
   const area = document.getElementById('camera-area');
   area.style.display = 'block';
   try {
-    if (typeof ZXing === 'undefined') { toast('ZXing não carregado', 'err'); return; }
-
-    // Solicitar stream com alta resolução, câmera traseira e autofoco contínuo
     const constraints = {
       video: {
         facingMode: { ideal: 'environment' },
-        width: { ideal: 1920 },
-        height: { ideal: 1080 },
-        advanced: [
-          { focusMode: 'continuous' },
-          { zoom: 1 }
-        ]
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        advanced: [{ focusMode: 'continuous' }]
       }
     };
 
@@ -716,25 +891,84 @@ document.getElementById('camera-btn').addEventListener('click', async () => {
     const video = document.getElementById('video-preview');
     video.srcObject = activeStream;
 
-    // Aplicar autofoco via track settings
     const track = activeStream.getVideoTracks()[0];
-    if (track && track.applyConstraints) {
-      try {
-        await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
-      } catch(_) {}
+    if (track?.applyConstraints) {
+      try { await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }); } catch(_) {}
     }
 
-    codeReader = new ZXing.BrowserMultiFormatReader();
-    await codeReader.decodeFromStream(activeStream, 'video-preview', (result, err) => {
-      if (result) {
-        stopCamera();
-        lookupCode(result.getText());
-      }
-    });
+    if (useNativeDetector && nativeDetector) {
+      // 🚀 Chrome nativo — hardware-acelerado, lê instantaneamente
+      document.getElementById('scan-hint').textContent = '📷 Leitura nativa ativa';
+      await video.play().catch(() => {});
+      await startNativeScan(video);
+    } else {
+      // Fallback ZXing JS
+      document.getElementById('scan-hint').textContent = '📷 Aponte para o código';
+      if (typeof ZXing === 'undefined') { toast('Leitor não carregado', 'err'); return; }
+      codeReader = new ZXing.BrowserMultiFormatReader();
+      await codeReader.decodeFromStream(activeStream, 'video-preview', (result, err) => {
+        if (result) { stopCamera(); lookupCode(result.getText()); }
+      });
+    }
   } catch(e) { toast('Câmera: ' + e.message, 'err'); }
 });
 
 document.getElementById('camera-stop-btn').addEventListener('click', stopCamera);
+
+// Tap-to-focus no vídeo
+document.getElementById('video-preview').addEventListener('click', async () => {
+  if (!activeStream) return;
+  const track = activeStream.getVideoTracks()[0];
+  if (!track) return;
+  try { await track.applyConstraints({ advanced: [{ focusMode: 'single-shot' }] }); }
+  catch(_) {}
+  setTimeout(async () => {
+    try { await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }); } catch(_) {}
+  }, 800);
+});
+
+// Foto via câmera nativa → BarcodeDetector
+document.getElementById('photo-capture-btn').addEventListener('click', () => {
+  document.getElementById('photo-capture-input').click();
+});
+document.getElementById('photo-capture-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  e.target.value = '';
+  toast('Analisando foto...', 'ok');
+
+  // Carregar imagem via <img> para máxima compatibilidade
+  const url = URL.createObjectURL(file);
+  const imgEl = new Image();
+  imgEl.src = url;
+  await new Promise(r => { imgEl.onload = r; });
+
+  const canvas = document.createElement('canvas');
+  canvas.width = imgEl.naturalWidth;
+  canvas.height = imgEl.naturalHeight;
+  canvas.getContext('2d').drawImage(imgEl, 0, 0);
+  URL.revokeObjectURL(url);
+
+  // Tenta BarcodeDetector nativo primeiro
+  if (useNativeDetector && nativeDetector) {
+    try {
+      const bmp = await createImageBitmap(canvas);
+      const results = await nativeDetector.detect(bmp);
+      if (results.length > 0) { lookupCode(results[0].rawValue); return; }
+    } catch(_) {}
+  }
+
+  // Fallback ZXing
+  if (typeof ZXing !== 'undefined') {
+    try {
+      const reader = new ZXing.BrowserMultiFormatReader();
+      const result = await reader.decodeFromCanvas(canvas);
+      if (result) { lookupCode(result.getText()); return; }
+    } catch(_) {}
+  }
+
+  toast('Nenhum código encontrado — tente com mais luz ou mais perto', 'err');
+});
 
 let torchOn = false;
 document.getElementById('torch-btn').addEventListener('click', async () => {
@@ -766,13 +1000,13 @@ document.getElementById('zoom-slider').addEventListener('input', async (e) => {
       }
     } catch(_) {}
   }
-  // Fallback: zoom via CSS scale centrado no frame
-  video.style.transform = `scale(${z})`;
-  video.style.transformOrigin = 'center center';
+  // Sem zoom de hardware disponível — orientar o usuário
+  if (z > 1.5) toast('Aproxime o celular do código para mais nitidez', 'ok');
 });
 
 function stopCamera() {
   document.getElementById('camera-area').style.display = 'none';
+  if (nativeScanLoop) { cancelAnimationFrame(nativeScanLoop); nativeScanLoop = null; }
   if (codeReader) { codeReader.reset(); codeReader = null; }
   if (activeStream) { activeStream.getTracks().forEach(t => t.stop()); activeStream = null; }
 }
