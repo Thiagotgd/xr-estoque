@@ -325,12 +325,30 @@ async function handleAPI(req, res, pathname, query) {
     return sendJSON(res, 200, { produto: { ...row, alerta } });
   }
 
+  // GET /api/codigos/:produto_id
+  if (method === 'GET' && pathname.match(/^\/api\/codigos\/\d+$/)) {
+    const id = pathname.split('/')[3];
+    const rows = db.prepare('SELECT * FROM codigos WHERE produto_id = ? ORDER BY created_at DESC').all(id);
+    return sendJSON(res, 200, rows);
+  }
+
+  // DELETE /api/codigo/:id
+  if (method === 'DELETE' && pathname.match(/^\/api\/codigo\/\d+$/)) {
+    const id = pathname.split('/')[3];
+    db.prepare('DELETE FROM codigos WHERE id = ?').run(id);
+    return sendJSON(res, 200, { ok: true });
+  }
+
   // POST /api/bipe
   if (method === 'POST' && pathname === '/api/bipe') {
     const body = await parseBody(req);
     if (!body.codigo || !body.produto_id) return sendJSON(res, 400, { error: 'codigo and produto_id required' });
     try {
-      db.prepare('INSERT INTO codigos (codigo, produto_id) VALUES (?, ?)').run(body.codigo, body.produto_id);
+      if (body.force) {
+        db.prepare('INSERT OR REPLACE INTO codigos (codigo, produto_id) VALUES (?, ?)').run(body.codigo, body.produto_id);
+      } else {
+        db.prepare('INSERT INTO codigos (codigo, produto_id) VALUES (?, ?)').run(body.codigo, body.produto_id);
+      }
       return sendJSON(res, 201, { ok: true });
     } catch (e) {
       return sendJSON(res, 409, { error: 'Código já existe' });
