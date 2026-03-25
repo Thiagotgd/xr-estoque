@@ -269,9 +269,12 @@
               <div id="scan-line"></div>
             </div>
           </div>
-          <div id="scan-hint">Aponte para o código de barras</div>
+          <div id="scan-hint">Aponte para o código de barras — mantenha firme e aguarde o foco</div>
         </div>
-        <button class="btn btn-ghost btn-sm" id="camera-stop-btn" style="margin-top:10px;width:100%">⏹ Fechar câmera</button>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button class="btn btn-ghost btn-sm" id="torch-btn" style="flex:0 0 auto">🔦 Lanterna</button>
+          <button class="btn btn-ghost btn-sm" id="camera-stop-btn" style="flex:1">⏹ Fechar câmera</button>
+        </div>
       </div>
       <div id="bipe-result"></div>
     </div>
@@ -681,15 +684,41 @@ function adjQty(id, delta) {
 
 // Camera
 let codeReader = null;
+let activeStream = null;
+
 document.getElementById('camera-btn').addEventListener('click', async () => {
   const area = document.getElementById('camera-area');
   area.style.display = 'block';
   try {
     if (typeof ZXing === 'undefined') { toast('ZXing não carregado', 'err'); return; }
+
+    // Solicitar stream com alta resolução, câmera traseira e autofoco contínuo
+    const constraints = {
+      video: {
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+        advanced: [
+          { focusMode: 'continuous' },
+          { zoom: 1 }
+        ]
+      }
+    };
+
+    activeStream = await navigator.mediaDevices.getUserMedia(constraints);
+    const video = document.getElementById('video-preview');
+    video.srcObject = activeStream;
+
+    // Aplicar autofoco via track settings
+    const track = activeStream.getVideoTracks()[0];
+    if (track && track.applyConstraints) {
+      try {
+        await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+      } catch(_) {}
+    }
+
     codeReader = new ZXing.BrowserMultiFormatReader();
-    const devices = await codeReader.listVideoInputDevices();
-    const deviceId = devices.length > 0 ? devices[devices.length - 1].deviceId : undefined;
-    await codeReader.decodeFromVideoDevice(deviceId, 'video-preview', (result, err) => {
+    await codeReader.decodeFromStream(activeStream, 'video-preview', (result, err) => {
       if (result) {
         stopCamera();
         lookupCode(result.getText());
@@ -700,9 +729,22 @@ document.getElementById('camera-btn').addEventListener('click', async () => {
 
 document.getElementById('camera-stop-btn').addEventListener('click', stopCamera);
 
+let torchOn = false;
+document.getElementById('torch-btn').addEventListener('click', async () => {
+  if (!activeStream) return;
+  const track = activeStream.getVideoTracks()[0];
+  if (!track) return;
+  try {
+    torchOn = !torchOn;
+    await track.applyConstraints({ advanced: [{ torch: torchOn }] });
+    document.getElementById('torch-btn').textContent = torchOn ? '🔦 Lanterna ON' : '🔦 Lanterna';
+  } catch(_) { toast('Lanterna não suportada neste dispositivo', 'warn'); }
+});
+
 function stopCamera() {
   document.getElementById('camera-area').style.display = 'none';
   if (codeReader) { codeReader.reset(); codeReader = null; }
+  if (activeStream) { activeStream.getTracks().forEach(t => t.stop()); activeStream = null; }
 }
 
 // Name search
