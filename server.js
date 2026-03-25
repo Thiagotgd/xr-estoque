@@ -477,6 +477,7 @@ async function handleAPI(req, res, pathname, query) {
 
 // ─── HTTP Server ───────────────────────────────────────────────────────────────
 const indexHTML = fs.readFileSync(path.join(__dirname, 'index.html'));
+const logoPath = path.join(__dirname, 'logo-xr.png');
 
 const server = http.createServer(async (req, res) => {
   const url = parseURL(req.url);
@@ -499,6 +500,13 @@ const server = http.createServer(async (req, res) => {
     }
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     return res.end(indexHTML);
+  }
+
+  // Serve logo
+  if (pathname === '/logo-xr.png') {
+    const logo = fs.readFileSync(logoPath);
+    res.writeHead(200, { 'Content-Type': 'image/png' });
+    return res.end(logo);
   }
 
   // Strip secret path prefix for API routes
