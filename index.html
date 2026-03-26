@@ -544,7 +544,7 @@ async function loadDashboard() {
     alertEl.className = 'value' + (alertas > 0 ? ' danger' : '');
 
     const hoje = new Date().toISOString().slice(0, 10);
-    const hojeCount = movs.filter(m => m.data === hoje).length;
+    const hojeCount = (movs.rows || movs).filter(m => m.data === hoje).length;
     document.getElementById('stat-hoje').textContent = hojeCount;
 
     const critical = produtos
@@ -655,9 +655,9 @@ function renderFound(produto, codigo) {
         <button class="qty-btn" onclick="adjQty('bipe-qty', 1)">+</button>
       </div>
       <div class="action-row">
-        <button class="btn btn-success btn-entrada-admin" onclick="registrar(${produto.id}, 'entrada', 'bipe-qty')">📥 Entrada</button>
+        ${userRole === 'admin' ? `<button class="btn btn-success" onclick="registrar(${produto.id}, 'entrada', 'bipe-qty')">📥 Entrada</button>` : ''}
         <button class="btn btn-danger" onclick="registrar(${produto.id}, 'saida', 'bipe-qty')">📤 Saída</button>
-        <button class="btn btn-ghost btn-sm" onclick="revincularCodigo('${escJs(codigo)}', ${produto.id})" title="Vincular este código a outro produto">🔄 Código errado?</button>
+        ${userRole === 'admin' ? `<button class="btn btn-ghost btn-sm" onclick="revincularCodigo('${escJs(codigo)}', ${produto.id})" title="Vincular este código a outro produto">🔄 Código errado?</button>` : ''}
       </div>
     </div>`;
   setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
@@ -681,7 +681,7 @@ function renderNovo(codigo) {
         <input type="number" id="novo-qty" value="1" min="1" style="width:80px;text-align:center">
         <button class="qty-btn" onclick="adjQty('novo-qty', 1)">+</button>
       </div>
-      <button class="btn btn-primary" onclick="vincularERegistrar('${escJs(codigo)}')">🔗 Vincular + registrar entrada</button>
+      ${userRole === 'admin' ? `<button class="btn btn-primary" onclick="vincularERegistrar('${escJs(codigo)}')">🔗 Vincular + registrar entrada</button>` : `<div style="color:var(--text-muted);font-size:13px;margin-top:8px">⚠️ Código desconhecido. Consulte o administrador.</div>`}
     </div>`;
   setTimeout(() => document.getElementById('bipe-result').scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
 }
@@ -1059,7 +1059,7 @@ async function selectNameProduct(id) {
         <button class="qty-btn" onclick="adjQty('ns-qty', 1)">+</button>
       </div>
       <div class="action-row">
-        <button class="btn btn-success btn-entrada-admin" onclick="registrarNs(${produto.id}, 'entrada')">📥 Entrada</button>
+        ${userRole === 'admin' ? `<button class="btn btn-success" onclick="registrarNs(${produto.id}, 'entrada')">📥 Entrada</button>` : ''}
         <button class="btn btn-danger" onclick="registrarNs(${produto.id}, 'saida')">📤 Saída</button>
       </div>
     </div>`;
