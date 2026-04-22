@@ -79,6 +79,8 @@
   .btn-lg { padding: 12px 24px; font-size: 16px; }
   .btn:disabled { opacity: .5; cursor: not-allowed; }
 
+  .input-field { background: var(--card2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 8px; font-size: 14px; font-family: inherit; }
+  .input-field:focus { outline: none; border-color: var(--accent); }
   /* Inputs */
   input[type=text], input[type=number], select, textarea {
     background: var(--card2); border: 1px solid var(--border); color: var(--text);
@@ -207,6 +209,7 @@
     <button class="tab-btn" data-tab="produtos">Produtos</button>
     <button class="tab-btn" data-tab="compras">Compras</button>
     <button class="tab-btn" data-tab="historico">📋 Histórico</button>
+    <button class="tab-btn" data-tab="cotacoes">💰 Cotações</button>
   </div>
 </header>
 
@@ -343,7 +346,7 @@
     </div>
     <div class="card table-wrap">
       <table>
-        <thead><tr><th>Produto</th><th>Atual</th><th>Mínimo</th><th>Falta</th><th>Pedir</th><th></th></tr></thead>
+        <thead><tr><th>Produto</th><th>Atual</th><th>Mín</th><th>Falta</th><th>Pedir</th><th>Melhor Preço</th><th></th></tr></thead>
         <tbody id="compras-tbody"></tbody>
       </table>
     </div>
@@ -365,6 +368,75 @@
     </div>
     <div id="hist-list"></div>
     <div id="hist-pagination" style="display:flex;gap:8px;justify-content:center;margin-top:12px;flex-wrap:wrap"></div>
+  </div>
+
+  <!-- ─── COTAÇÕES ─── -->
+  <div class="tab-pane" id="tab-cotacoes">
+    <!-- Upload / Capture -->
+    <div class="card" style="margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        <span class="section-title">📸 Registrar Nota</span>
+      </div>
+      <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">Tire fotos da nota fiscal (pode ser mais de uma pagina)</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-primary btn-lg" onclick="document.getElementById('nota-input').value='';document.getElementById('nota-input').setAttribute('capture','environment');document.getElementById('nota-input').click()">📷 Tirar Foto</button>
+        <button class="btn btn-ghost btn-lg" onclick="document.getElementById('nota-input').value='';document.getElementById('nota-input').removeAttribute('capture');document.getElementById('nota-input').click()">🖼️ Galeria</button>
+        <input type="file" accept="image/*" id="nota-input" style="position:absolute;left:-9999px">
+      </div>
+      <div id="nota-thumbs" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"></div>
+      <div id="nota-fotos-actions" style="display:none;margin-top:12px;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-ghost" onclick="document.getElementById('nota-input').value='';document.getElementById('nota-input').setAttribute('capture','environment');document.getElementById('nota-input').click()">+ Mais foto</button>
+        <button class="btn btn-success btn-lg" onclick="enviarFotosNota()">Enviar e ler nota</button>
+        <button class="btn btn-ghost" onclick="limparFotos()">Limpar</button>
+      </div>
+      <div id="nota-loading" style="display:none;text-align:center;padding:20px">
+        <div style="width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px"></div>
+        <p style="color:var(--text-muted)">Lendo nota fiscal...</p>
+      </div>
+    </div>
+
+    <!-- Confirmation form (hidden until AI extracts) -->
+    <div id="nota-confirm" style="display:none">
+      <div class="card" style="margin-bottom:16px">
+        <div class="section-title" style="margin-bottom:12px">✅ Confirme os dados</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+          <div>
+            <label style="font-size:12px;color:var(--text-muted)">Fornecedor</label>
+            <input type="text" id="nota-fornecedor" class="input-field" style="width:100%">
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--text-muted)">Data</label>
+            <input type="text" id="nota-data" class="input-field" placeholder="DD/MM/YYYY" style="width:100%">
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Item da Nota</th><th>Produto Vinculado</th><th>Qtd</th><th>Preço Unit.</th><th></th></tr></thead>
+            <tbody id="nota-itens-tbody"></tbody>
+          </table>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button class="btn btn-success btn-lg" onclick="salvarNota()">💾 Salvar Nota</button>
+          <button class="btn btn-ghost" onclick="cancelarNota()">Cancelar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Price search -->
+    <div class="card" style="margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        <span class="section-title">🔍 Consultar Preços</span>
+        <input type="text" id="preco-search" placeholder="Buscar produto..." class="input-field" style="flex:1">
+        <button class="btn btn-primary btn-sm" onclick="buscarPrecos()">Buscar</button>
+      </div>
+      <div id="preco-results"></div>
+    </div>
+
+    <!-- Recent invoices -->
+    <div class="card">
+      <div class="section-title" style="margin-bottom:12px">📋 Notas Recentes</div>
+      <div id="notas-list"></div>
+    </div>
   </div>
 
 </main>
@@ -439,7 +511,12 @@
 <div id="toast"></div>
 
 <script>
-const API = '';  // same origin
+const API = (() => {
+  const p = window.location.pathname.replace(/\/$/, '');
+  if (p.startsWith('/estoque')) return '/estoque';
+  if (p && p !== '/') return p;  // secret path
+  return '';
+})();
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
 // ─── Alerta Reposição ─────────────────────────────────────────────────────────
@@ -520,15 +597,26 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.classList.add('active');
     document.getElementById('tab-' + tab).classList.add('active');
     activeTab = tab;
+    sessionStorage.setItem('xr-estoque-tab', tab);
     if (tab === 'dashboard') loadDashboard();
     if (tab === 'produtos') loadProdutos();
     if (tab === 'compras') loadCompras();
     if (tab === 'historico') { histPage = 0; loadHistorico(); }
+    if (tab === 'cotacoes') loadCotacoes();
     if (tab === 'bipagem') {
       setTimeout(() => document.getElementById('bipe-input').focus(), 100);
     }
   });
 });
+
+// Restore saved tab (survives camera redirect)
+{
+  const saved = sessionStorage.getItem('xr-estoque-tab');
+  if (saved) {
+    const btn = document.querySelector('.tab-btn[data-tab="' + saved + '"]');
+    if (btn && btn.style.display !== 'none') btn.click();
+  }
+}
 
 // ─── DASHBOARD ────────────────────────────────────────────────────────────────
 async function loadDashboard() {
@@ -1237,28 +1325,49 @@ async function loadCompras() {
     const rows = await api('GET', '/api/compras');
     const tbody = document.getElementById('compras-tbody');
     if (rows.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:24px">✅ Estoque OK!</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:24px">✅ Estoque OK!</td></tr>';
       return;
     }
-    tbody.innerHTML = rows.map(r => `
-      <tr id="compra-row-${r.id}">
+    // Fetch best prices
+    let precoMap = {};
+    try {
+      const precos = await api('GET', '/api/cotacao/precos');
+      for (const p of precos) {
+        if (p.produto_id && (!precoMap[p.produto_id] || p.preco_unitario < precoMap[p.produto_id].preco)) {
+          precoMap[p.produto_id] = { preco: p.preco_unitario, fornecedor: p.fornecedor, data: p.data };
+        }
+      }
+    } catch(e) {}
+    tbody.innerHTML = rows.map(r => {
+      const done = !!r.pedido_em;
+      const best = precoMap[r.id];
+      const precoHtml = best
+        ? '<span style="color:var(--success);font-weight:700">R$ ' + Number(best.preco).toFixed(2).replace('.', ',') + '</span><br><span style="font-size:11px;color:var(--text-muted)">' + escHtml(best.fornecedor) + '</span>'
+        : '<span style="color:var(--text-muted);font-size:12px">—</span>';
+      return `
+      <tr id="compra-row-${r.id}" class="${done ? 'row-done' : ''}">
         <td>${escHtml(r.nome)}</td>
         <td><span class="badge badge-warn">${r.estoque_atual}</span></td>
         <td>${r.estoque_minimo}</td>
         <td class="falta-cell">−${r.falta}</td>
         <td style="color:#3498db;font-weight:700">${r.qtd_compra > 0 ? r.qtd_compra : r.falta}</td>
-        <td><button id="btn-pedido-${r.id}" class="btn btn-ghost btn-sm" onclick="markPedido(${r.id})">🛒 Fazer pedido</button></td>
-      </tr>`).join('');
+        <td>${precoHtml}</td>
+        <td><button id="btn-pedido-${r.id}" class="btn btn-ghost btn-sm" onclick="markPedido(${r.id})" style="${done ? 'color:#aaa' : ''}">${done ? '✅ Pedido feito' : '🛒 Fazer pedido'}</button></td>
+      </tr>`}).join('');
   } catch(e) { toast('Erro: ' + e.message, 'err'); }
 }
 
-function markPedido(id) {
+async function markPedido(id) {
   const row = document.getElementById('compra-row-' + id);
   const btn = document.getElementById('btn-pedido-' + id);
   if (!row || !btn) return;
-  const done = row.classList.toggle('row-done');
-  btn.textContent = done ? '✅ Pedido feito' : '🛒 Fazer pedido';
-  btn.style.color = done ? '#aaa' : '';
+  try {
+    const r = await api('POST', '/api/compras/' + id + '/pedido');
+    const done = !!r.pedido_em;
+    row.classList.toggle('row-done', done);
+    btn.textContent = done ? '✅ Pedido feito' : '🛒 Fazer pedido';
+    btn.style.color = done ? '#aaa' : '';
+  } catch(e) { toast('Erro ao salvar pedido: ' + e.message, 'err'); }
 }
 
 document.getElementById('whatsapp-btn').addEventListener('click', async () => {
@@ -1278,6 +1387,301 @@ function escJs(s) {
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
+
+// ─── COTAÇÕES ────────────────────────────────────────────────────────────────
+let notaExtraida = null;
+let produtosCache = [];
+let notaFotos = []; // {base64, mimeType, thumb}
+
+async function loadCotacoes() {
+  loadNotasRecentes();
+  try { produtosCache = await api('GET', '/api/produtos'); } catch(e) {}
+  // Restore photos from sessionStorage (survives camera redirect)
+  const saved = sessionStorage.getItem('xr-nota-fotos');
+  if (saved) {
+    try {
+      notaFotos = JSON.parse(saved);
+      renderThumbs();
+    } catch(e) {}
+  }
+}
+
+function addNotaFiles(files) {
+  for (const file of files) {
+    const reader = new FileReader();
+    reader.onload = function(ev) {
+      const img = new Image();
+      img.onload = function() {
+        // Resize to max 1600px for API, 160px for thumb
+        const canvas = document.createElement('canvas');
+        const maxW = 1600, maxH = 1600;
+        let w = img.width, h = img.height;
+        if (w > maxW || h > maxH) {
+          const scale = Math.min(maxW / w, maxH / h);
+          w = Math.round(w * scale); h = Math.round(h * scale);
+        }
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        const fullDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+        // Thumb
+        const tw = 160, th = Math.round(160 * h / w);
+        canvas.width = tw; canvas.height = th;
+        canvas.getContext('2d').drawImage(img, 0, 0, tw, th);
+        const thumbDataUrl = canvas.toDataURL('image/jpeg', 0.6);
+
+        notaFotos.push({ base64: fullDataUrl.split(',')[1], mimeType: 'image/jpeg', thumb: thumbDataUrl });
+        try { sessionStorage.setItem('xr-nota-fotos', JSON.stringify(notaFotos)); } catch(e) {}
+        renderThumbs();
+        toast(notaFotos.length + ' foto(s) adicionada(s)');
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+}
+
+function renderThumbs() {
+  const div = document.getElementById('nota-thumbs');
+  div.innerHTML = notaFotos.map((f, i) =>
+    '<div style="position:relative;display:inline-block">' +
+    '<img src="' + f.thumb + '" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">' +
+    '<button onclick="removeNotaFoto(' + i + ')" style="position:absolute;top:-6px;right:-6px;background:var(--danger);color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:12px;cursor:pointer;line-height:20px">X</button>' +
+    '</div>'
+  ).join('');
+  const actions = document.getElementById('nota-fotos-actions');
+  actions.style.display = notaFotos.length > 0 ? 'flex' : 'none';
+}
+
+function removeNotaFoto(idx) {
+  notaFotos.splice(idx, 1);
+  sessionStorage.setItem('xr-nota-fotos', JSON.stringify(notaFotos));
+  renderThumbs();
+}
+
+function limparFotos() {
+  notaFotos = [];
+  sessionStorage.removeItem('xr-nota-fotos');
+  renderThumbs();
+}
+
+document.getElementById('nota-input').addEventListener('change', e => {
+  if (e.target.files && e.target.files.length) addNotaFiles(e.target.files);
+  e.target.value = '';
+});
+
+async function enviarFotosNota() {
+  if (notaFotos.length === 0) return toast('Tire pelo menos uma foto', 'err');
+  document.getElementById('nota-loading').style.display = 'block';
+  document.getElementById('nota-confirm').style.display = 'none';
+
+  // Send each photo and merge results
+  let allItens = [];
+  let fornecedor = '', data = '', numero = '';
+  for (const foto of notaFotos) {
+    try {
+      const resp = await fetch(API + '/api/cotacao/extrair', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: foto.base64, mimeType: foto.mimeType })
+      });
+      const result = await resp.json();
+      if (!resp.ok) continue;
+      if (result.fornecedor && !fornecedor) fornecedor = result.fornecedor;
+      if (result.data && !data) data = result.data;
+      if (result.numero && !numero) numero = result.numero;
+      if (result.itens) allItens = allItens.concat(result.itens);
+    } catch(e) { console.error('[COTACAO] fetch error:', e); }
+  }
+
+  document.getElementById('nota-loading').style.display = 'none';
+
+  if (allItens.length === 0) {
+    toast('Nao consegui ler os itens. Tente outras fotos.', 'err');
+    console.error('[COTACAO] No items extracted from', notaFotos.length, 'photos');
+    return;
+  }
+
+  notaExtraida = { fornecedor, data, numero, itens: allItens };
+  renderNotaConfirm(notaExtraida);
+  // Clear saved photos
+  sessionStorage.removeItem('xr-nota-fotos');
+}
+
+function renderNotaConfirm(data) {
+  document.getElementById('nota-fornecedor').value = data.fornecedor || '';
+  document.getElementById('nota-data').value = data.data || '';
+  const tbody = document.getElementById('nota-itens-tbody');
+  tbody.innerHTML = data.itens.map((item, i) => {
+    const prodOptions = '<option value="">-- Vincular --</option>' +
+      produtosCache.map(p => '<option value="' + p.id + '"' + (item.produto_id === p.id ? ' selected' : '') + '>' + escHtml(p.nome) + '</option>').join('');
+    return '<tr>' +
+      '<td><input type="text" value="' + escHtml(item.descricao) + '" data-idx="' + i + '" data-field="descricao" class="input-field nota-edit" style="width:100%;min-width:100px"></td>' +
+      '<td><select data-idx="' + i + '" data-field="produto_id" class="input-field nota-edit" style="min-width:120px">' + prodOptions + '</select></td>' +
+      '<td><input type="number" value="' + item.quantidade + '" data-idx="' + i + '" data-field="quantidade" class="input-field nota-edit" style="width:55px" min="0" step="any"></td>' +
+      '<td><input type="number" value="' + item.preco_unitario + '" data-idx="' + i + '" data-field="preco_unitario" class="input-field nota-edit" style="width:75px" min="0" step="0.01"></td>' +
+      '<td><button class="btn btn-danger btn-sm" onclick="removeNotaItem(' + i + ')">X</button></td>' +
+    '</tr>';
+  }).join('');
+  document.getElementById('nota-confirm').style.display = 'block';
+}
+
+function removeNotaItem(idx) {
+  if (!notaExtraida) return;
+  notaExtraida.itens.splice(idx, 1);
+  renderNotaConfirm(notaExtraida);
+}
+
+function collectNotaEdits() {
+  document.querySelectorAll('.nota-edit').forEach(el => {
+    const idx = parseInt(el.dataset.idx);
+    const field = el.dataset.field;
+    if (!notaExtraida || !notaExtraida.itens[idx]) return;
+    if (field === 'produto_id') {
+      notaExtraida.itens[idx].produto_id = el.value ? parseInt(el.value) : null;
+    } else if (field === 'quantidade' || field === 'preco_unitario') {
+      notaExtraida.itens[idx][field] = parseFloat(el.value) || 0;
+    } else {
+      notaExtraida.itens[idx][field] = el.value;
+    }
+  });
+}
+
+async function salvarNota() {
+  collectNotaEdits();
+  const fornecedor = document.getElementById('nota-fornecedor').value.trim();
+  const data = document.getElementById('nota-data').value.trim();
+  if (!fornecedor) return toast('Informe o fornecedor', 'err');
+  if (!data) return toast('Informe a data', 'err');
+  if (!notaExtraida || !notaExtraida.itens.length) return toast('Sem itens', 'err');
+  try {
+    await api('POST', '/api/cotacao/salvar', {
+      fornecedor, numero: notaExtraida.numero || '', data,
+      itens: notaExtraida.itens
+    });
+    toast('Nota salva com sucesso!');
+    cancelarNota();
+    loadNotasRecentes();
+  } catch(e) { toast('Erro: ' + e.message, 'err'); }
+}
+
+function cancelarNota() {
+  notaExtraida = null;
+  notaFotos = [];
+  sessionStorage.removeItem('xr-nota-fotos');
+  document.getElementById('nota-confirm').style.display = 'none';
+  document.getElementById('nota-loading').style.display = 'none';
+  document.getElementById('nota-thumbs').innerHTML = '';
+  document.getElementById('nota-fotos-actions').style.display = 'none';
+}
+
+async function buscarPrecos() {
+  const search = document.getElementById('preco-search').value.trim();
+  if (!search) return;
+  try {
+    const rows = await api('GET', '/api/cotacao/precos?search=' + encodeURIComponent(search));
+    const div = document.getElementById('preco-results');
+    if (rows.length === 0) {
+      div.innerHTML = '<p style="color:var(--text-muted);padding:12px">Nenhum preco encontrado para "' + escHtml(search) + '"</p>';
+      return;
+    }
+    div.innerHTML = '<div class="table-wrap"><table><thead><tr><th>Produto</th><th>Fornecedor</th><th>Preco Unit.</th><th>Data</th></tr></thead><tbody>' +
+      rows.map(r => '<tr>' +
+        '<td>' + escHtml(r.produto_nome || r.descricao) + '</td>' +
+        '<td>' + escHtml(r.fornecedor) + '</td>' +
+        '<td style="font-weight:700;color:var(--success)">R$ ' + Number(r.preco_unitario).toFixed(2).replace('.', ',') + '</td>' +
+        '<td style="color:var(--text-muted)">' + escHtml(r.data) + '</td>' +
+      '</tr>').join('') + '</tbody></table></div>';
+  } catch(e) { toast('Erro: ' + e.message, 'err'); }
+}
+
+document.getElementById('preco-search').addEventListener('keydown', e => { if (e.key === 'Enter') buscarPrecos(); });
+
+async function loadNotasRecentes() {
+  try {
+    const rows = await api('GET', '/api/notas');
+    const div = document.getElementById('notas-list');
+    if (rows.length === 0) {
+      div.innerHTML = '<p style="color:var(--text-muted);padding:12px">Nenhuma nota registrada</p>';
+      return;
+    }
+    div.innerHTML = rows.map(r =>
+      '<div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">' +
+        '<div>' +
+          '<div style="font-weight:700">' + escHtml(r.fornecedor_nome) + '</div>' +
+          '<div style="font-size:13px;color:var(--text-muted)">' + escHtml(r.data) + ' · ' + r.total_itens + ' itens</div>' +
+          '<div style="font-weight:700;color:var(--success);margin-top:2px">R$ ' + Number(r.total_valor || 0).toFixed(2).replace('.', ',') + '</div>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px;flex-shrink:0">' +
+          '<button class="btn btn-sm" onclick="editarNota(' + r.id + ')" style="padding:8px 12px;font-size:16px">✏️</button>' +
+          '<button class="btn btn-danger btn-sm" onclick="apagarNota(' + r.id + ')" style="padding:8px 12px;font-size:16px">🗑️</button>' +
+        '</div>' +
+      '</div>'
+    ).join('');
+  } catch(e) {}
+}
+
+// ─── Apagar nota ─────────────────────────────────────────────────────────────
+async function apagarNota(id) {
+  if (!confirm('Apagar esta nota?')) return;
+  try {
+    await api('DELETE', '/api/nota/' + id);
+    toast('Nota apagada');
+    loadNotasRecentes();
+  } catch(e) { toast('Erro: ' + e.message, 'err'); }
+}
+
+// ─── Editar nota ─────────────────────────────────────────────────────────────
+let editandoNotaId = null;
+
+async function editarNota(id) {
+  try {
+    const nota = await api('GET', '/api/nota/' + id);
+    editandoNotaId = id;
+    notaExtraida = {
+      fornecedor: nota.fornecedor_nome,
+      numero: nota.numero,
+      data: nota.data,
+      itens: nota.itens.map(it => ({
+        descricao: it.descricao,
+        quantidade: it.quantidade,
+        preco_unitario: it.preco_unitario,
+        produto_id: it.produto_id
+      }))
+    };
+    renderNotaConfirm(notaExtraida);
+    document.getElementById('nota-confirm').scrollIntoView({ behavior: 'smooth' });
+  } catch(e) { toast('Erro ao carregar nota: ' + e.message, 'err'); }
+}
+
+// Wrap salvarNota to support edit mode (PUT) vs create mode (POST)
+const _salvarNotaOriginal = salvarNota;
+salvarNota = async function() {
+  collectNotaEdits();
+  const fornecedor = document.getElementById('nota-fornecedor').value.trim();
+  const data = document.getElementById('nota-data').value.trim();
+  if (!fornecedor) return toast('Informe o fornecedor', 'err');
+  if (!data) return toast('Informe a data', 'err');
+  if (!notaExtraida || !notaExtraida.itens.length) return toast('Sem itens', 'err');
+
+  const payload = {
+    fornecedor, numero: notaExtraida.numero || '', data,
+    itens: notaExtraida.itens
+  };
+
+  try {
+    if (editandoNotaId) {
+      await api('PUT', '/api/nota/' + editandoNotaId, payload);
+      toast('Nota atualizada!');
+      editandoNotaId = null;
+    } else {
+      await api('POST', '/api/cotacao/salvar', payload);
+      toast('Nota salva com sucesso!');
+    }
+    cancelarNota();
+    loadNotasRecentes();
+  } catch(e) { toast('Erro: ' + e.message, 'err'); }
+};
+
 refreshProdutos();
 </script>
 </body>

@@ -1,9 +1,13 @@
 'use strict';
 
 const http = require('http');
+const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const Database = require('better-sqlite3');
+
+const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
+const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || '';
 
 const PORT = 8087;
 const SECRET_PATH = '/xr-esto-r9k1';
@@ -37,6 +41,36 @@ CREATE TABLE IF NOT EXISTS movimentacoes (
   quantidade INTEGER NOT NULL,
   obs TEXT DEFAULT '',
   data TEXT NOT NULL,
+  created_at INTEGER DEFAULT (strftime('%s','now') * 1000)
+);
+`);
+
+// Add pedido_em column if missing
+try { db.exec(`ALTER TABLE produtos ADD COLUMN pedido_em TEXT DEFAULT NULL`); } catch(e) {}
+
+// ─── Cotações tables ──────────────────────────────────────────────────────────
+db.exec(`
+CREATE TABLE IF NOT EXISTS fornecedores (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nome TEXT NOT NULL UNIQUE,
+  created_at INTEGER DEFAULT (strftime('%s','now') * 1000)
+);
+
+CREATE TABLE IF NOT EXISTS notas (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  fornecedor_id INTEGER REFERENCES fornecedores(id) ON DELETE CASCADE,
+  numero TEXT DEFAULT '',
+  data TEXT NOT NULL,
+  created_at INTEGER DEFAULT (strftime('%s','now') * 1000)
+);
+
+CREATE TABLE IF NOT EXISTS nota_itens (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nota_id INTEGER REFERENCES notas(id) ON DELETE CASCADE,
+  produto_id INTEGER REFERENCES produtos(id) ON DELETE SET NULL,
+  descricao TEXT NOT NULL,
+  quantidade REAL NOT NULL,
+  preco_unitario REAL NOT NULL,
   created_at INTEGER DEFAULT (strftime('%s','now') * 1000)
 );
 `);
@@ -235,6 +269,121 @@ async function isAdmin(req) {
 function parseURL(urlStr) {
   try { return new URL(urlStr, 'http://localhost'); }
   catch { return null; }
+}
+
+// ─── AI Invoice extraction ────────────────────────────────────────────────────
+function httpsPost(url, headers, body) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const req = https.request({ hostname: u.hostname, port: 443, path: u.pathname + u.search, method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' } }, res => {
+      let d = ''; res.on('data', c => d += c); res.on('end', () => resolve({ status: res.statusCode, data: d }));
+    });
+    req.on('error', reject);
+    req.setTimeout(60000, () => { req.destroy(); reject(new Error('timeout')); });
+    req.write(JSON.stringify(body));
+    req.end();
+  });
+}
+
+const NOTA_PROMPT = `Você é um OCR especializado em notas fiscais brasileiras de produtos veterinários/médicos.
+
+Extraia os dados desta nota fiscal / cupom de compra. Leia com EXTREMO cuidado cada item, quantidade e valor.
+
+Retorne APENAS um JSON válido neste formato exato:
+{
+  "fornecedor": "nome do fornecedor/loja EXATAMENTE como escrito",
+  "numero": "número da nota (ou vazio)",
+  "data": "DD/MM/YYYY",
+  "itens": [
+    { "descricao": "nome do item", "quantidade": 1, "preco_unitario": 10.50 }
+  ]
+}
+
+Regras IMPORTANTES:
+- Leia CADA caractere da nota com cuidado. Não invente dados.
+- descricao: copie o nome do produto EXATAMENTE como está na nota
+- quantidade: o número na coluna QTD/QUANT. Geralmente é inteiro (1, 2, 5, 10...)
+- preco_unitario: SEMPRE o preço de UMA ÚNICA UNIDADE. Procure a coluna VL.UNIT, UNIT, V.UNIT, UNITÁRIO.
+  * Se a nota só mostra o VALOR TOTAL do item, DIVIDA pelo quantidade para obter o unitário.
+  * Exemplo: se qtd=5 e total=50.00, preco_unitario=10.00 (NÃO 50.00)
+  * NUNCA coloque o valor total da linha como preco_unitario
+- NÃO invente itens que não existem na nota
+- Se um campo está ilegível, use "" ou 0
+- data no formato DD/MM/YYYY
+- Retorne SOMENTE o JSON, nada mais`;
+
+async function extractInvoiceFromImage(base64Image, mimeType) {
+  console.log(`[COTACAO] Extraindo nota, imagem: ${Math.round(base64Image.length/1024)}KB, mime: ${mimeType}`);
+
+  // Attempt 1: Groq (free)
+  try {
+    const resp = await httpsPost('https://api.groq.com/openai/v1/chat/completions', {
+      'Authorization': `Bearer ${GROQ_API_KEY}`
+    }, {
+      model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+      max_tokens: 2048,
+      temperature: 0,
+      messages: [
+        { role: 'system', content: 'Responda APENAS com JSON válido. Sem explicações.' },
+        { role: 'user', content: [
+          { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64Image}` } },
+          { type: 'text', text: NOTA_PROMPT }
+        ]}
+      ]
+    });
+    console.log(`[COTACAO] Groq status: ${resp.status}`);
+    if (resp.status === 200) {
+      const parsed = JSON.parse(resp.data);
+      const content = parsed.choices?.[0]?.message?.content || '';
+      console.log(`[COTACAO] Groq raw: ${content.substring(0, 200)}`);
+      const json = content.replace(/```json\n?/g, '').replace(/```/g, '').trim();
+      const result = JSON.parse(json);
+      if (result.itens && result.itens.length > 0) {
+        console.log(`[COTACAO] Groq OK: ${result.itens.length} itens`);
+        return result;
+      }
+    } else {
+      console.log(`[COTACAO] Groq error response: ${resp.data.substring(0, 300)}`);
+    }
+  } catch(e) { console.error('[COTACAO] Groq error:', e.message); }
+
+  // Attempt 2: Gemini Flash (fallback)
+  console.log('[COTACAO] Trying Gemini Flash fallback...');
+  try {
+    const resp = await httpsPost(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GOOGLE_API_KEY}`, {}, {
+      contents: [{ parts: [
+        { inlineData: { mimeType, data: base64Image } },
+        { text: NOTA_PROMPT }
+      ]}],
+      generationConfig: { temperature: 0, maxOutputTokens: 2048 }
+    });
+    console.log(`[COTACAO] Gemini status: ${resp.status}`);
+    if (resp.status === 200) {
+      const parsed = JSON.parse(resp.data);
+      const content = parsed.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      console.log(`[COTACAO] Gemini raw: ${content.substring(0, 200)}`);
+      const json = content.replace(/```json\n?/g, '').replace(/```/g, '').trim();
+      const result = JSON.parse(json);
+      console.log(`[COTACAO] Gemini OK: ${result.itens?.length || 0} itens`);
+      return result;
+    } else {
+      console.log(`[COTACAO] Gemini error response: ${resp.data.substring(0, 300)}`);
+    }
+  } catch(e) { console.error('[COTACAO] Gemini error:', e.message); }
+
+  console.log('[COTACAO] Ambos falharam');
+  return null;
+}
+
+// Parse raw body for multipart or large JSON
+function parseRawBody(req, maxSize = 20 * 1024 * 1024) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    req.on('data', c => { size += c.length; if (size > maxSize) { req.destroy(); reject(new Error('Body too large')); } chunks.push(c); });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
 }
 
 // ─── API Router ────────────────────────────────────────────────────────────────
@@ -490,12 +639,22 @@ async function handleAPI(req, res, pathname, query) {
   // GET /api/compras
   if (method === 'GET' && pathname === '/api/compras') {
     const rows = db.prepare(`
-      SELECT id, nome, estoque_atual, estoque_minimo, (estoque_minimo - estoque_atual) as falta
+      SELECT id, nome, estoque_atual, estoque_minimo, qtd_compra, (estoque_minimo - estoque_atual) as falta, pedido_em
       FROM produtos
       WHERE estoque_minimo > 0 AND estoque_atual < estoque_minimo
       ORDER BY falta DESC
     `).all();
     return sendJSON(res, 200, rows);
+  }
+
+  // POST /api/compras/:id/pedido — marca/desmarca pedido feito
+  if (method === 'POST' && pathname.match(/^\/api\/compras\/\d+\/pedido$/)) {
+    const id = pathname.split('/')[3];
+    const produto = db.prepare('SELECT pedido_em FROM produtos WHERE id = ?').get(id);
+    if (!produto) return sendJSON(res, 404, { error: 'Produto não encontrado' });
+    const now = produto.pedido_em ? null : new Date().toISOString();
+    db.prepare('UPDATE produtos SET pedido_em = ? WHERE id = ?').run(now, id);
+    return sendJSON(res, 200, { id: +id, pedido_em: now });
   }
 
   // POST /api/etiqueta/:id
@@ -518,11 +677,168 @@ async function handleAPI(req, res, pathname, query) {
     return sendJSON(res, 200, { codigo, svg });
   }
 
+  // ─── COTAÇÕES API ──────────────────────────────────────────────────────────
+
+  // POST /api/cotacao/extrair — upload image, extract invoice via AI
+  if (method === 'POST' && pathname === '/api/cotacao/extrair') {
+    const raw = await parseRawBody(req);
+    let body;
+    try { body = JSON.parse(raw.toString()); } catch(e) { return sendJSON(res, 400, { error: 'Invalid JSON' }); }
+    const { image, mimeType } = body;
+    if (!image) return sendJSON(res, 400, { error: 'image (base64) required' });
+    const result = await extractInvoiceFromImage(image, mimeType || 'image/jpeg');
+    if (!result) return sendJSON(res, 500, { error: 'Não consegui ler a nota. Tente outra foto.' });
+    // Try to match items to existing products
+    const produtos = db.prepare('SELECT id, nome FROM produtos ORDER BY nome COLLATE NOCASE').all();
+    for (const item of result.itens) {
+      const desc = item.descricao.toLowerCase();
+      let bestMatch = null, bestScore = 0;
+      for (const p of produtos) {
+        const pname = p.nome.toLowerCase();
+        // Simple word overlap scoring
+        const descWords = desc.split(/\s+/);
+        const pWords = pname.split(/\s+/);
+        let score = 0;
+        for (const w of pWords) {
+          if (w.length >= 2 && desc.includes(w)) score += w.length;
+        }
+        for (const w of descWords) {
+          if (w.length >= 2 && pname.includes(w)) score += w.length;
+        }
+        if (score > bestScore) { bestScore = score; bestMatch = p; }
+      }
+      item.produto_id = bestScore >= 4 ? bestMatch.id : null;
+      item.produto_nome = bestScore >= 4 ? bestMatch.nome : null;
+    }
+    return sendJSON(res, 200, result);
+  }
+
+  // POST /api/cotacao/salvar — save confirmed invoice
+  if (method === 'POST' && pathname === '/api/cotacao/salvar') {
+    const body = await parseBody(req);
+    const { fornecedor, numero, data, itens } = body;
+    if (!fornecedor || !data || !itens || !itens.length) return sendJSON(res, 400, { error: 'fornecedor, data, itens required' });
+
+    const result = db.transaction(() => {
+      // Upsert fornecedor
+      db.prepare('INSERT OR IGNORE INTO fornecedores (nome) VALUES (?)').run(fornecedor.trim());
+      const forn = db.prepare('SELECT id FROM fornecedores WHERE nome = ?').get(fornecedor.trim());
+
+      // Insert nota
+      const nota = db.prepare('INSERT INTO notas (fornecedor_id, numero, data) VALUES (?, ?, ?)').run(forn.id, numero || '', data);
+      const notaId = nota.lastInsertRowid;
+
+      // Insert itens
+      const insertItem = db.prepare('INSERT INTO nota_itens (nota_id, produto_id, descricao, quantidade, preco_unitario) VALUES (?, ?, ?, ?, ?)');
+      for (const item of itens) {
+        insertItem.run(notaId, item.produto_id || null, item.descricao, item.quantidade || 1, item.preco_unitario || 0);
+      }
+      return { nota_id: notaId, fornecedor_id: forn.id };
+    })();
+
+    return sendJSON(res, 201, { ok: true, ...result });
+  }
+
+  // GET /api/cotacao/precos/:produto_id — price history for a product
+  if (method === 'GET' && pathname.match(/^\/api\/cotacao\/precos\/\d+$/)) {
+    const prodId = pathname.split('/').pop();
+    const rows = db.prepare(`
+      SELECT ni.preco_unitario, ni.quantidade, ni.descricao,
+             n.data, n.numero as nota_numero,
+             f.nome as fornecedor
+      FROM nota_itens ni
+      JOIN notas n ON n.id = ni.nota_id
+      JOIN fornecedores f ON f.id = n.fornecedor_id
+      WHERE ni.produto_id = ?
+      ORDER BY n.data DESC
+    `).all(prodId);
+    return sendJSON(res, 200, rows);
+  }
+
+  // GET /api/cotacao/precos — price history for all products (latest per product per supplier)
+  if (method === 'GET' && pathname === '/api/cotacao/precos') {
+    const search = query.get('search') || '';
+    let where = '1=1';
+    const params = [];
+    if (search) { where += ' AND (p.nome LIKE ? OR ni.descricao LIKE ?)'; params.push('%'+search+'%', '%'+search+'%'); }
+    const rows = db.prepare(`
+      SELECT ni.produto_id, p.nome as produto_nome,
+             ni.preco_unitario, ni.descricao,
+             n.data, f.nome as fornecedor,
+             MIN(ni.preco_unitario) as melhor_preco
+      FROM nota_itens ni
+      JOIN notas n ON n.id = ni.nota_id
+      JOIN fornecedores f ON f.id = n.fornecedor_id
+      LEFT JOIN produtos p ON p.id = ni.produto_id
+      WHERE ${where}
+      GROUP BY ni.produto_id, f.id
+      ORDER BY p.nome COLLATE NOCASE, ni.preco_unitario ASC
+    `).all(...params);
+    return sendJSON(res, 200, rows);
+  }
+
+  // GET /api/fornecedores
+  if (method === 'GET' && pathname === '/api/fornecedores') {
+    const rows = db.prepare('SELECT * FROM fornecedores ORDER BY nome COLLATE NOCASE').all();
+    return sendJSON(res, 200, rows);
+  }
+
+  // GET /api/notas
+  if (method === 'GET' && pathname === '/api/notas') {
+    const rows = db.prepare(`
+      SELECT n.*, f.nome as fornecedor_nome,
+             (SELECT COUNT(*) FROM nota_itens WHERE nota_id = n.id) as total_itens,
+             (SELECT SUM(quantidade * preco_unitario) FROM nota_itens WHERE nota_id = n.id) as total_valor
+      FROM notas n
+      JOIN fornecedores f ON f.id = n.fornecedor_id
+      ORDER BY n.data DESC
+    `).all();
+    return sendJSON(res, 200, rows);
+  }
+
+  // GET /api/nota/:id — single nota with items
+  if (method === 'GET' && pathname.match(/^\/api\/nota\/\d+$/)) {
+    const id = pathname.split('/').pop();
+    const nota = db.prepare(`SELECT n.*, f.nome as fornecedor_nome FROM notas n JOIN fornecedores f ON f.id = n.fornecedor_id WHERE n.id = ?`).get(id);
+    if (!nota) return sendJSON(res, 404, { error: 'Nota not found' });
+    nota.itens = db.prepare('SELECT * FROM nota_itens WHERE nota_id = ? ORDER BY id').all(id);
+    return sendJSON(res, 200, nota);
+  }
+
+  // DELETE /api/nota/:id
+  if (method === 'DELETE' && pathname.match(/^\/api\/nota\/\d+$/)) {
+    const id = pathname.split('/').pop();
+    db.prepare('DELETE FROM notas WHERE id = ?').run(id);
+    return sendJSON(res, 200, { ok: true });
+  }
+
+  // PUT /api/nota/:id — edit saved nota
+  if (method === 'PUT' && pathname.match(/^\/api\/nota\/\d+$/)) {
+    const id = pathname.split('/').pop();
+    const body = await parseBody(req);
+    const { fornecedor, numero, data, itens } = body;
+    if (!fornecedor || !data || !itens || !itens.length) return sendJSON(res, 400, { error: 'fornecedor, data, itens required' });
+
+    const result = db.transaction(() => {
+      db.prepare('INSERT OR IGNORE INTO fornecedores (nome) VALUES (?)').run(fornecedor.trim());
+      const forn = db.prepare('SELECT id FROM fornecedores WHERE nome = ?').get(fornecedor.trim());
+      db.prepare('UPDATE notas SET fornecedor_id = ?, numero = ?, data = ? WHERE id = ?').run(forn.id, numero || '', data, id);
+      db.prepare('DELETE FROM nota_itens WHERE nota_id = ?').run(id);
+      const insertItem = db.prepare('INSERT INTO nota_itens (nota_id, produto_id, descricao, quantidade, preco_unitario) VALUES (?, ?, ?, ?, ?)');
+      for (const item of itens) {
+        insertItem.run(id, item.produto_id || null, item.descricao, item.quantidade || 1, item.preco_unitario || 0);
+      }
+      return { nota_id: id, fornecedor_id: forn.id };
+    })();
+
+    return sendJSON(res, 200, { ok: true, ...result });
+  }
+
   return sendJSON(res, 404, { error: 'Not found' });
 }
 
 // ─── HTTP Server ───────────────────────────────────────────────────────────────
-const indexHTML = fs.readFileSync(path.join(__dirname, 'index.html'));
+const indexHTMLPath = path.join(__dirname, 'index.html');
 const logoPath = path.join(__dirname, 'logo-xr.png');
 
 const server = http.createServer(async (req, res) => {
@@ -547,8 +863,8 @@ const server = http.createServer(async (req, res) => {
       // No auth, but redirect to self — in production Traefik handles auth
       // For local dev, just serve the page
     }
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    return res.end(indexHTML);
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
+    return res.end(fs.readFileSync(indexHTMLPath));
   }
 
   // Serve logo
@@ -577,7 +893,9 @@ const server = http.createServer(async (req, res) => {
 
   // API routes (accessible once authed)
   if (apiPath.startsWith('/api/')) {
+    console.log(`[API] ${req.method} ${apiPath} (original: ${pathname})`);
     if (!isAuthed(req)) {
+      console.log(`[API] 401 - no auth cookie`);
       return sendJSON(res, 401, { error: 'Unauthorized' });
     }
     try {
@@ -588,8 +906,12 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // Root redirect to secret path
-  if (pathname === '/') {
+  // Root — serve frontend (when accessed via auth proxy)
+  if (pathname === '/' || pathname === '') {
+    if (isAuthed(req)) {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
+      return res.end(fs.readFileSync(indexHTMLPath));
+    }
     res.writeHead(302, { Location: SECRET_PATH });
     return res.end();
   }
