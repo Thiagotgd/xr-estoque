@@ -1,0 +1,1295 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="/public/manifest.json">
+<meta name="theme-color" content="#1a2a4a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="XR Estoque">
+<link rel="apple-touch-icon" href="/public/icon-192.png">
+<title>📦 XR Estoque</title>
+<script src="https://unpkg.com/@zxing/library@latest/umd/index.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0a1628;
+    --card: #1a2a4a;
+    --card2: #1e3055;
+    --accent: #3498db;
+    --accent-hover: #2980b9;
+    --danger: #e74c3c;
+    --success: #27ae60;
+    --warning: #f39c12;
+    --text: #e8eaf0;
+    --text-muted: #8899bb;
+    --border: #2a3a5a;
+    --radius: 8px;
+  }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; }
+  
+  /* Layout */
+  html, body { overflow-x: hidden; }
+  header { background: var(--card); border-bottom: 1px solid var(--border); padding: 0 20px; display: flex; align-items: center; gap: 16px; min-height: 56px; height: auto; position: sticky; top: 0; z-index: 100; width: 100%; box-sizing: border-box; flex-wrap: wrap; padding-top: 6px; padding-bottom: 6px; }
+  .logo { font-size: 1.2rem; font-weight: 700; color: var(--accent); white-space: nowrap; }
+  .tabs { display: flex; gap: 4px; margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
+  main { overflow-x: hidden; }
+  .tab-btn { background: none; border: none; color: var(--text-muted); padding: 8px 16px; border-radius: var(--radius); cursor: pointer; font-size: 14px; font-weight: 500; transition: all .15s; white-space: nowrap; }
+  .tab-btn:hover { background: var(--card2); color: var(--text); }
+  .tab-btn.active { background: var(--accent); color: #fff; }
+  main { max-width: 1100px; margin: 0 auto; padding: 20px 16px; }
+  .tab-pane { display: none; }
+  .tab-pane.active { display: block; }
+
+  /* Cards */
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+  .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 20px; }
+  .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; text-align: center; }
+  .stat-card .value { font-size: 2.5rem; font-weight: 700; color: var(--accent); line-height: 1; }
+  .stat-card .value.danger { color: var(--danger); }
+  .stat-card .label { color: var(--text-muted); font-size: 13px; margin-top: 6px; }
+
+  /* Tables */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { background: var(--card2); color: var(--text-muted); text-align: left; padding: 10px 12px; font-weight: 600; border-bottom: 1px solid var(--border); }
+  td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tr:hover td { background: rgba(255,255,255,.03); }
+  tr:last-child td { border-bottom: none; }
+
+  /* Badges */
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+  .badge-ok { background: rgba(39,174,96,.2); color: #4ece8a; }
+  .badge-warn { background: rgba(231,76,60,.2); color: #ff7676; }
+  .badge-info { background: rgba(52,152,219,.2); color: #5bc0f8; }
+
+  /* Buttons */
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: var(--radius); border: none; cursor: pointer; font-size: 14px; font-weight: 500; transition: all .15s; white-space: nowrap; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-success { background: var(--success); color: #fff; }
+  .btn-success:hover { background: #229954; }
+  .btn-danger { background: var(--danger); color: #fff; }
+  .btn-danger:hover { background: #c0392b; }
+  .btn-ghost { background: transparent; color: var(--text-muted); border: 1px solid var(--border); }
+  .btn-ghost:hover { background: var(--card2); color: var(--text); }
+  .btn-sm { padding: 5px 10px; font-size: 13px; }
+  .btn-lg { padding: 12px 24px; font-size: 16px; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+  /* Inputs */
+  input[type=text], input[type=number], select, textarea {
+    background: var(--card2); border: 1px solid var(--border); color: var(--text);
+    padding: 9px 12px; border-radius: var(--radius); font-size: 14px; width: 100%;
+    outline: none; transition: border-color .15s;
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+  input::placeholder, textarea::placeholder { color: var(--text-muted); }
+  select option { background: var(--card2); }
+  .input-group { display: flex; gap: 8px; align-items: center; }
+  .input-group input { flex: 1; }
+  label { display: block; font-size: 13px; color: var(--text-muted); margin-bottom: 4px; }
+  .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 12px; }
+  .form-field { display: flex; flex-direction: column; }
+
+  /* Section title */
+  .section-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  .section-title { font-size: 1.1rem; font-weight: 600; }
+
+  /* Bipagem */
+  .bipe-input-wrap { position: relative; margin-bottom: 16px; }
+  .bipe-input { font-size: 1.3rem !important; padding: 14px 16px !important; padding-right: 120px !important; }
+  .bipe-camera-btn { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); }
+  .result-card { background: var(--card); border: 2px solid var(--border); border-radius: var(--radius); padding: 20px; margin-top: 16px; }
+  .result-card.found { border-color: var(--accent); }
+  .result-card.novo { border-color: var(--warning); }
+  .product-name { font-size: 1.2rem; font-weight: 700; margin-bottom: 8px; }
+  .qty-control { display: flex; align-items: center; gap: 8px; }
+  .qty-control input[type=number] { width: 80px; text-align: center; }
+  .qty-btn { background: var(--card2); border: 1px solid var(--border); color: var(--text); width: 36px; height: 36px; border-radius: var(--radius); cursor: pointer; font-size: 1.2rem; display: flex; align-items: center; justify-content: center; }
+  .qty-btn:hover { background: var(--border); }
+  .action-row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  #camera-area { margin: 12px 0; }
+  #camera-wrap {
+    position: relative; width: 100%; max-width: 400px; margin: 0 auto;
+    border-radius: var(--radius); overflow: hidden; background: #000;
+    aspect-ratio: 4/3;
+  }
+  #video-preview { width: 100%; height: 100%; object-fit: cover; display: block; }
+  #scan-overlay {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  }
+  #scan-frame {
+    width: 65%; aspect-ratio: 3/2; position: relative;
+    box-shadow: 0 0 0 2000px rgba(0,0,0,0.5);
+    border-radius: 4px;
+  }
+  #scan-frame::before, #scan-frame::after,
+  #scan-frame .corner-br, #scan-frame .corner-bl {
+    content: ''; position: absolute; width: 24px; height: 24px; border-color: #3498db; border-style: solid;
+  }
+  #scan-frame::before { top: 0; left: 0; border-width: 3px 0 0 3px; border-radius: 4px 0 0 0; }
+  #scan-frame::after  { top: 0; right: 0; border-width: 3px 3px 0 0; border-radius: 0 4px 0 0; }
+  #scan-frame .corner-br { bottom: 0; right: 0; border-width: 0 3px 3px 0; border-radius: 0 0 4px 0; }
+  #scan-frame .corner-bl { bottom: 0; left: 0; border-width: 0 0 3px 3px; border-radius: 0 0 0 4px; }
+  #scan-line {
+    position: absolute; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, #3498db, transparent);
+    animation: scanline 1.8s ease-in-out infinite;
+  }
+  @keyframes scanline {
+    0%   { top: 8%; opacity: 0; }
+    10%  { opacity: 1; }
+    90%  { opacity: 1; }
+    100% { top: 92%; opacity: 0; }
+  }
+  #scan-hint {
+    position: absolute; bottom: 10px; left: 0; right: 0; text-align: center;
+    color: #ffffffcc; font-size: 12px; text-shadow: 0 1px 3px #000;
+  }
+  .name-search-section { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border); }
+  .search-results { margin-top: 8px; max-height: 240px; overflow-y: auto; background: var(--card2); border: 1px solid var(--border); border-radius: var(--radius); }
+  .search-result-item { padding: 10px 14px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); font-size: 14px; }
+  .search-result-item:last-child { border-bottom: none; }
+  .search-result-item:hover { background: var(--card); }
+
+  /* Produtos tab */
+  .search-bar { margin-bottom: 16px; }
+  .inline-form { background: var(--card2); border: 1px solid var(--accent); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; }
+  .edit-row { background: var(--card2); }
+  .edit-row td { padding: 8px 12px; }
+
+  /* Modal */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 1000; align-items: center; justify-content: center; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; max-width: 500px; width: 95%; }
+  .modal-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 16px; }
+  .barcode-display { background: white; padding: 16px; border-radius: var(--radius); text-align: center; margin-bottom: 16px; }
+  .barcode-display svg { max-width: 100%; height: auto; }
+  .barcode-name { font-size: 1rem; font-weight: 600; margin-bottom: 4px; }
+  .barcode-code { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px; }
+
+  /* Compras */
+  .compras-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px; }
+  .falta-cell { font-weight: 700; color: var(--danger); }
+  .row-done td { opacity: .45; text-decoration: line-through; }
+
+  /* Toast */
+  #toast { position: fixed; bottom: 24px; right: 24px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 20px; font-size: 14px; z-index: 9999; opacity: 0; transform: translateY(8px); transition: all .25s; pointer-events: none; max-width: 320px; }
+  #toast.show { opacity: 1; transform: translateY(0); }
+  #toast.toast-ok { border-left: 4px solid var(--success); }
+  #toast.toast-err { border-left: 4px solid var(--danger); }
+
+  /* Print */
+  @media print {
+    header, .tabs, .btn:not(.print-show), #toast { display: none !important; }
+    .barcode-display { border: none; }
+  }
+
+  @media (max-width: 600px) {
+    .tabs { gap: 2px; }
+    .tab-btn { padding: 6px 10px; font-size: 13px; }
+    .stat-card .value { font-size: 1.8rem; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <a href="https://xrdiagnostico.tech" style="display:flex;align-items:center;text-decoration:none">
+    <img src="/logo-xr.png" alt="XR" style="height:32px;object-fit:contain">
+  </a>
+  <div class="tabs">
+    <button class="tab-btn" data-tab="dashboard">Dashboard</button>
+    <button class="tab-btn active" data-tab="bipagem"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:middle;margin-right:4px"><path d="M2 4h4v16H2V4zm6 0h2v16H8V4zm4 0h1v16h-1V4zm3 0h2v16h-2V4zm4 0h3v16h-3V4z"/></svg>Bipagem</button>
+    <button class="tab-btn" data-tab="produtos">Produtos</button>
+    <button class="tab-btn" data-tab="compras">Compras</button>
+    <button class="tab-btn" data-tab="historico">📋 Histórico</button>
+  </div>
+</header>
+
+<main>
+
+  <!-- ─── DASHBOARD ─── -->
+  <div class="tab-pane" id="tab-dashboard">
+    <div class="card-grid">
+      <div class="stat-card">
+        <div class="value" id="stat-total">—</div>
+        <div class="label">Total de Produtos</div>
+      </div>
+      <div class="stat-card">
+        <div class="value" id="stat-alerta">—</div>
+        <div class="label">Itens com Alerta</div>
+      </div>
+      <div class="stat-card">
+        <div class="value" id="stat-hoje">—</div>
+        <div class="label">Movimentações Hoje</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="section-header">
+        <span class="section-title">⚠️ Itens Críticos</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Produto</th><th>Atual</th><th>Mínimo</th><th>Falta</th></tr></thead>
+          <tbody id="dash-critical-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <div class="section-header">
+        <span class="section-title">🔥 Mais Consumidos</span>
+        <select id="consumo-periodo" onchange="loadDashboard()" style="background:#0a1628;color:#fff;border:1px solid #3498db40;padding:4px 8px;border-radius:6px;font-size:13px">
+          <option value="7">Últimos 7 dias</option>
+          <option value="30" selected>Últimos 30 dias</option>
+          <option value="90">Últimos 90 dias</option>
+          <option value="0">Tudo</option>
+        </select>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Produto</th><th>Total saídas</th><th>Média/dia</th></tr></thead>
+          <tbody id="dash-consumo-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── BIPAGEM ─── -->
+  <div class="tab-pane active" id="tab-bipagem">
+    <div class="card">
+      <div class="section-header">
+        <span class="section-title"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:middle;margin-right:6px"><path d="M2 4h4v16H2V4zm6 0h2v16H8V4zm4 0h1v16h-1V4zm3 0h2v16h-2V4zm4 0h3v16h-3V4z"/></svg>Bipagem</span>
+      </div>
+      <div class="bipe-input-wrap">
+        <input type="text" id="bipe-input" class="bipe-input" placeholder="Bipe ou digite o código..." autocomplete="off" autofocus>
+        <button class="btn btn-ghost btn-sm bipe-camera-btn" id="camera-btn">📷 Leitor</button>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <button class="btn btn-ghost btn-sm" id="photo-capture-btn" style="flex:1;font-size:13px">📸 Foto (câmera nativa)</button>
+        <input type="file" id="photo-capture-input" accept="image/*" capture="environment" style="display:none">
+      </div>
+      <div id="camera-area" style="display:none">
+        <div id="camera-wrap">
+          <video id="video-preview" autoplay muted playsinline></video>
+          <div id="scan-overlay">
+            <div id="scan-frame">
+              <div class="corner-br"></div>
+              <div class="corner-bl"></div>
+              <div id="scan-line"></div>
+            </div>
+          </div>
+          <div id="scan-hint">Aponte para o código de barras</div>
+        </div>
+        <div style="margin-top:10px;padding:0 4px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <span style="font-size:12px;color:var(--text-muted);white-space:nowrap">🔍 Zoom</span>
+            <input type="range" id="zoom-slider" min="1" max="4" step="0.1" value="1" style="flex:1;accent-color:var(--accent)">
+            <span id="zoom-label" style="font-size:12px;color:var(--text-muted);width:28px">1×</span>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-ghost btn-sm" id="torch-btn" style="flex:0 0 auto">🔦 Lanterna</button>
+            <button class="btn btn-ghost btn-sm" id="camera-stop-btn" style="flex:1">⏹ Fechar câmera</button>
+          </div>
+        </div>
+      </div>
+      <div id="bipe-result"></div>
+    </div>
+
+    <div class="card name-search-section" style="margin-top:16px">
+      <div class="section-header"><span class="section-title">🔍 Buscar por nome</span></div>
+      <input type="text" id="name-search-input" placeholder="Digite o nome do produto...">
+      <div id="name-search-results" class="search-results" style="display:none"></div>
+      <div id="name-selected-card"></div>
+    </div>
+  </div>
+
+  <!-- ─── PRODUTOS ─── -->
+  <div class="tab-pane" id="tab-produtos">
+    <div class="section-header">
+      <span class="section-title">📋 Produtos</span>
+      <button class="btn btn-primary btn-sm" id="new-produto-btn">➕ Novo produto</button>
+    </div>
+    <div class="search-bar">
+      <input type="text" id="produtos-search" placeholder="Buscar produto...">
+    </div>
+    <div id="new-produto-form" style="display:none" class="inline-form">
+      <div class="form-row">
+        <div class="form-field"><label>Nome</label><input type="text" id="new-nome" placeholder="Nome do produto"></div>
+        <div class="form-field"><label>Estoque mínimo</label><input type="number" id="new-min" value="0" min="0"></div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary btn-sm" id="save-new-produto">💾 Salvar</button>
+        <button class="btn btn-ghost btn-sm" id="cancel-new-produto">Cancelar</button>
+      </div>
+    </div>
+    <div class="card table-wrap">
+      <table id="produtos-table">
+        <thead><tr><th>Nome</th><th>Atual</th><th>Mínimo</th><th>Qtd Compra</th><th>Ações</th></tr></thead>
+        <tbody id="produtos-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ─── COMPRAS ─── -->
+  <div class="tab-pane" id="tab-compras">
+    <div class="compras-header">
+      <span class="section-title">🛒 Lista de Compras</span>
+      <button class="btn btn-success" id="whatsapp-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:middle;margin-right:6px"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg> Compartilhar no WhatsApp</button>
+    </div>
+    <div class="card table-wrap">
+      <table>
+        <thead><tr><th>Produto</th><th>Atual</th><th>Mínimo</th><th>Falta</th><th>Pedir</th><th></th></tr></thead>
+        <tbody id="compras-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ─── HISTÓRICO ─── -->
+  <div class="tab-pane" id="tab-historico">
+    <div class="card" style="margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span class="section-title">📋 Histórico</span>
+        <select id="hist-tipo-filter" style="background:var(--card2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:13px">
+          <option value="">Todos</option>
+          <option value="entrada">Entradas</option>
+          <option value="saida">Saídas</option>
+        </select>
+        <input type="text" id="hist-search" placeholder="Filtrar..." style="background:var(--card2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:13px;flex:1;min-width:80px">
+        <button class="btn btn-ghost btn-sm" id="hist-refresh-btn">🔄</button>
+      </div>
+    </div>
+    <div id="hist-list"></div>
+    <div id="hist-pagination" style="display:flex;gap:8px;justify-content:center;margin-top:12px;flex-wrap:wrap"></div>
+  </div>
+
+</main>
+
+<!-- Edit Movimentacao Modal -->
+<div class="modal-overlay" id="edit-mov-modal" style="display:none;position:fixed;inset:0;background:#0008;z-index:1000;align-items:center;justify-content:center">
+  <div style="background:var(--card);border-radius:12px;padding:20px;width:90%;max-width:360px">
+    <div style="font-weight:700;font-size:1.1rem;margin-bottom:16px">✏️ Editar movimentação</div>
+    <input type="hidden" id="edit-mov-id">
+    <div class="form-field" style="margin-bottom:12px">
+      <label>Produto</label>
+      <input type="text" id="edit-mov-nome" disabled style="background:var(--card2);color:var(--text-muted);border:1px solid var(--border);border-radius:6px;padding:8px;width:100%">
+    </div>
+    <div class="form-field" style="margin-bottom:12px">
+      <label>Tipo</label>
+      <select id="edit-mov-tipo" style="background:var(--card2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px;width:100%">
+        <option value="entrada">📥 Entrada</option>
+        <option value="saida">📤 Saída</option>
+      </select>
+    </div>
+    <div class="form-field" style="margin-bottom:12px">
+      <label>Quantidade</label>
+      <input type="number" id="edit-mov-qty" min="1" style="background:var(--card2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px;width:100%">
+    </div>
+    <div class="form-field" style="margin-bottom:16px">
+      <label>Observação</label>
+      <input type="text" id="edit-mov-obs" style="background:var(--card2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px;width:100%">
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-danger" id="edit-mov-delete" style="flex:0 0 auto">🗑️</button>
+      <button class="btn btn-ghost" onclick="document.getElementById('edit-mov-modal').style.display='none'" style="flex:1">Cancelar</button>
+      <button class="btn btn-primary" id="edit-mov-save" style="flex:1">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Label Modal -->
+<div class="modal-overlay" id="label-modal">
+  <div class="modal">
+    <div class="modal-title">🏷️ Etiqueta</div>
+    <div class="barcode-name" id="modal-produto-nome"></div>
+    <div class="barcode-code" id="modal-produto-codigo"></div>
+    <div class="barcode-display" id="modal-barcode-svg"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-primary print-show" id="print-btn">🖨️ Imprimir</button>
+      <button class="btn btn-ghost" id="close-modal-btn">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Alerta de reposição -->
+<div id="alerta-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:10000;display:none;align-items:center;justify-content:center">
+  <div style="background:#1a2a4a;border:2px solid #e74c3c;border-radius:16px;padding:32px;max-width:380px;width:90%;text-align:center;animation:shake .4s ease">
+    <div style="font-size:48px;margin-bottom:12px">⚠️</div>
+    <h2 style="color:#e74c3c;margin:0 0 8px">REPOR ESTOQUE!</h2>
+    <p id="alerta-nome" style="font-size:18px;font-weight:bold;margin:0 0 8px"></p>
+    <p id="alerta-info" style="color:#aaa;margin:0 0 24px;font-size:14px"></p>
+    <button onclick="fecharAlerta()" style="background:#e74c3c;color:white;border:none;padding:12px 32px;border-radius:8px;font-size:16px;cursor:pointer;font-weight:bold">OK, entendido</button>
+  </div>
+</div>
+
+<style>
+@keyframes shake {
+  0%,100%{transform:translateX(0)}
+  20%{transform:translateX(-8px)}
+  40%{transform:translateX(8px)}
+  60%{transform:translateX(-6px)}
+  80%{transform:translateX(6px)}
+}
+</style>
+
+<div id="toast"></div>
+
+<script>
+const API = (() => {
+  const p = window.location.pathname.replace(/\/$/, '');
+  if (p.startsWith('/estoque')) return '/estoque';
+  if (p && p !== '/') return p;  // secret path
+  return '';
+})();
+
+// ─── Toast ────────────────────────────────────────────────────────────────────
+// ─── Alerta Reposição ─────────────────────────────────────────────────────────
+function alertaReposicao(nome, atual, minimo) {
+  // Som de alerta
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    [440, 550, 440, 330].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.frequency.value = freq;
+      osc.type = 'square';
+      gain.gain.setValueAtTime(0.3, ctx.currentTime + i * 0.15);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + i * 0.15 + 0.12);
+      osc.start(ctx.currentTime + i * 0.15);
+      osc.stop(ctx.currentTime + i * 0.15 + 0.15);
+    });
+  } catch(e) {}
+  // Modal
+  document.getElementById('alerta-nome').textContent = nome;
+  document.getElementById('alerta-info').textContent = `Estoque atual: ${atual} unidade${atual !== 1 ? 's' : ''} — Mínimo: ${minimo}`;
+  const modal = document.getElementById('alerta-modal');
+  modal.style.display = 'flex';
+}
+function fecharAlerta() {
+  document.getElementById('alerta-modal').style.display = 'none';
+}
+
+let toastTimer;
+function toast(msg, type='ok') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = `show toast-${type}`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.className = '', 2800);
+}
+
+// ─── API helpers ──────────────────────────────────────────────────────────────
+async function api(method, path, body) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(API + path, opts);
+  if (!r.ok) {
+    const e = await r.json().catch(() => ({}));
+    throw new Error(e.error || `HTTP ${r.status}`);
+  }
+  return r.json();
+}
+
+// ─── Tabs ─────────────────────────────────────────────────────────────────────
+let activeTab = 'bipagem';
+// ─── Role-based UI ────────────────────────────────────────────────────────────
+let userRole = 'viewer';
+(async () => {
+  try {
+    const me = await api('GET', '/api/me');
+    userRole = me.role || 'viewer';
+    if (userRole !== 'admin') { // operator, viewer = acesso restrito
+      // Hide admin-only tabs
+      document.querySelectorAll('.tab-btn[data-tab="dashboard"], .tab-btn[data-tab="produtos"]').forEach(b => b.style.display = 'none');
+      // Hide entrada button in bipagem
+      document.querySelectorAll('.btn-entrada-admin').forEach(el => el.style.display = 'none');
+      // Set active tab to bipagem
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+      document.getElementById('tab-bipagem').classList.add('active');
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelector('.tab-btn[data-tab="bipagem"]').classList.add('active');
+    }
+  } catch(e) {}
+})();
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tab = btn.dataset.tab;
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + tab).classList.add('active');
+    activeTab = tab;
+    if (tab === 'dashboard') loadDashboard();
+    if (tab === 'produtos') loadProdutos();
+    if (tab === 'compras') loadCompras();
+    if (tab === 'historico') { histPage = 0; loadHistorico(); }
+    if (tab === 'bipagem') {
+      setTimeout(() => document.getElementById('bipe-input').focus(), 100);
+    }
+  });
+});
+
+// ─── DASHBOARD ────────────────────────────────────────────────────────────────
+async function loadDashboard() {
+  try {
+    const [produtos, movs] = await Promise.all([
+      api('GET', '/api/produtos'),
+      api('GET', '/api/movimentacoes?limit=500')
+    ]);
+    document.getElementById('stat-total').textContent = produtos.length;
+    const alertas = produtos.filter(p => p.alerta).length;
+    const alertEl = document.getElementById('stat-alerta');
+    alertEl.textContent = alertas;
+    alertEl.className = 'value' + (alertas > 0 ? ' danger' : '');
+
+    const hoje = new Date().toISOString().slice(0, 10);
+    const hojeCount = (movs.rows || movs).filter(m => m.data === hoje).length;
+    document.getElementById('stat-hoje').textContent = hojeCount;
+
+    const critical = produtos
+      .filter(p => p.estoque_minimo > 0 && p.estoque_atual < p.estoque_minimo)
+      .sort((a, b) => (b.estoque_minimo - b.estoque_atual) - (a.estoque_minimo - a.estoque_atual));
+
+    const tbody = document.getElementById('dash-critical-tbody');
+    if (critical.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:24px">✅ Nenhum item crítico</td></tr>';
+    } else {
+      tbody.innerHTML = critical.map(p => `
+        <tr>
+          <td>${escHtml(p.nome)}</td>
+          <td><span class="badge badge-warn">${p.estoque_atual}</span></td>
+          <td>${p.estoque_minimo}</td>
+          <td class="falta-cell">−${p.estoque_minimo - p.estoque_atual}</td>
+        </tr>`).join('');
+    }
+    // Consumo
+    const dias = parseInt(document.getElementById('consumo-periodo')?.value || '30', 10);
+    const consumo = await api('GET', `/api/consumo?dias=${dias}`);
+    const ctbody = document.getElementById('dash-consumo-tbody');
+    if (!consumo.length) {
+      ctbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--text-muted);padding:16px">Nenhum dado de saída ainda</td></tr>';
+    } else {
+      const max = consumo[0].total;
+      ctbody.innerHTML = consumo.map((r, i) => {
+        const pct = Math.round((r.total / max) * 100);
+        const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}.`;
+        return `<tr>
+          <td>${medal} ${escHtml(r.nome)}<div style="height:4px;background:#3498db;width:${pct}%;border-radius:2px;margin-top:4px;opacity:.6"></div></td>
+          <td style="font-weight:700;color:#3498db">${r.total}</td>
+          <td style="color:#aaa">${r.media_dia}/dia</td>
+        </tr>`;
+      }).join('');
+    }
+
+  } catch(e) { toast('Erro ao carregar dashboard: ' + e.message, 'err'); }
+}
+
+// ─── BIPAGEM ─────────────────────────────────────────────────────────────────
+let allProdutos = [];
+
+async function refreshProdutos() {
+  allProdutos = await api('GET', '/api/produtos');
+}
+
+// ─── Estado do bipe acumulativo ───────────────────────────────────────────────
+let bipeAtual = null; // { produto, codigo, qty }
+
+const bipeInput = document.getElementById('bipe-input');
+bipeInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    const code = bipeInput.value.trim();
+    if (code) lookupCode(code);
+  }
+});
+
+// Also auto-trigger on barcode scanner (fast input)
+let bipeTimer;
+bipeInput.addEventListener('input', () => {
+  clearTimeout(bipeTimer);
+  bipeTimer = setTimeout(() => {
+    const code = bipeInput.value.trim();
+    if (code.length >= 4) lookupCode(code);
+  }, 300);
+});
+
+async function lookupCode(codigo) {
+  bipeInput.value = '';
+  bipeInput.focus();
+  try {
+    const data = await api('GET', '/api/bipe/' + encodeURIComponent(codigo));
+    if (data.novo) {
+      renderNovo(codigo);
+    } else {
+      // Mesmo produto? Incrementa contador
+      if (bipeAtual && bipeAtual.produto.id === data.produto.id) {
+        bipeAtual.qty++;
+        document.getElementById('bipe-qty').value = bipeAtual.qty;
+        // Flash no campo pra indicar que incrementou
+        const qtyEl = document.getElementById('bipe-qty');
+        qtyEl.style.background = '#2ecc71';
+        setTimeout(() => qtyEl.style.background = '', 300);
+      } else {
+        // Produto diferente: registra anterior se tinha, abre novo
+        if (bipeAtual) await confirmarBipeAtual();
+        bipeAtual = { produto: data.produto, codigo, qty: 1 };
+        renderFound(data.produto, codigo);
+      }
+    }
+  } catch(e) { toast('Erro: ' + e.message, 'err'); }
+}
+
+function renderFound(produto, codigo) {
+  const alerta = produto.estoque_minimo > 0 && produto.estoque_atual < produto.estoque_minimo;
+  const el = document.getElementById('bipe-result');
+  el.innerHTML = `
+    <div class="result-card found">
+      <div class="product-name">${escHtml(produto.nome)}</div>
+      <div style="margin-bottom:12px">
+        Estoque atual: <span class="badge ${alerta ? 'badge-warn' : 'badge-ok'}">${produto.estoque_atual}</span>
+        ${produto.estoque_minimo > 0 ? `<span style="color:var(--text-muted);font-size:13px"> / mín ${produto.estoque_minimo}</span>` : ''}
+      </div>
+      <div class="qty-control">
+        <button class="qty-btn" onclick="adjQty('bipe-qty', -1)">−</button>
+        <input type="number" id="bipe-qty" value="1" min="1" style="width:80px;text-align:center">
+        <button class="qty-btn" onclick="adjQty('bipe-qty', 1)">+</button>
+      </div>
+      <div class="action-row">
+        ${userRole === 'admin' ? `<button class="btn btn-success" onclick="registrar(${produto.id}, 'entrada', 'bipe-qty')">📥 Entrada</button>` : ''}
+        <button class="btn btn-danger" onclick="registrar(${produto.id}, 'saida', 'bipe-qty')">📤 Saída</button>
+        ${userRole === 'admin' ? `<button class="btn btn-ghost btn-sm" onclick="revincularCodigo('${escJs(codigo)}', ${produto.id})" title="Vincular este código a outro produto">🔄 Código errado?</button>` : ''}
+      </div>
+    </div>`;
+  setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+}
+
+function renderNovo(codigo) {
+  if (allProdutos.length === 0) refreshProdutos().then(() => renderNovo(codigo));
+  const options = allProdutos.map(p => `<option value="${p.id}">${escHtml(p.nome)}</option>`).join('');
+  document.getElementById('bipe-result').innerHTML = `
+    <div class="result-card novo">
+      <div style="font-size:1.1rem;font-weight:700;margin-bottom:8px">⚠️ Código novo: <code>${escHtml(codigo)}</code></div>
+      <div class="form-field" style="margin-bottom:12px">
+        <label>Vincular ao produto</label>
+        <select id="novo-produto-select">
+          <option value="">— Selecione —</option>
+          ${options}
+        </select>
+      </div>
+      <div class="qty-control" style="margin-bottom:12px">
+        <button class="qty-btn" onclick="adjQty('novo-qty', -1)">−</button>
+        <input type="number" id="novo-qty" value="1" min="1" style="width:80px;text-align:center">
+        <button class="qty-btn" onclick="adjQty('novo-qty', 1)">+</button>
+      </div>
+      ${userRole === 'admin' ? `<button class="btn btn-primary" onclick="vincularERegistrar('${escJs(codigo)}')">🔗 Vincular + registrar entrada</button>` : `<div style="color:var(--text-muted);font-size:13px;margin-top:8px">⚠️ Código desconhecido. Consulte o administrador.</div>`}
+    </div>`;
+  setTimeout(() => document.getElementById('bipe-result').scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+}
+
+async function vincularERegistrar(codigo) {
+  const prodId = document.getElementById('novo-produto-select').value;
+  if (!prodId) { toast('Selecione um produto', 'err'); return; }
+  const qty = parseInt(document.getElementById('novo-qty').value, 10);
+  try {
+    await api('POST', '/api/bipe', { codigo, produto_id: parseInt(prodId) });
+    const r = await api('POST', '/api/movimentacao', { produto_id: parseInt(prodId), tipo: 'entrada', quantidade: qty, obs: 'Bipagem' });
+    toast(`✅ Vinculado e registrado! Estoque: ${r.estoque_atual}`);
+    document.getElementById('bipe-result').innerHTML = '';
+    await refreshProdutos();
+  } catch(e) { toast('Erro: ' + e.message, 'err'); }
+}
+
+async function registrar(prodId, tipo, qtyId) {
+  const qty = parseInt(document.getElementById(qtyId).value, 10);
+  if (isNaN(qty) || qty <= 0) { toast('Quantidade inválida', 'err'); return; }
+  try {
+    const r = await api('POST', '/api/movimentacao', { produto_id: prodId, tipo, quantidade: qty, obs: 'Bipagem' });
+    bipeAtual = null;
+    if (tipo === 'saida' && r.alerta_reposicao) {
+      alertaReposicao(r.nome, r.estoque_atual, r.estoque_minimo);
+    } else {
+      toast(`${tipo === 'entrada' ? '📥' : '📤'} ${tipo === 'entrada' ? 'Entrada' : 'Saída'} registrada! Estoque: ${r.estoque_atual}`);
+    }
+    document.getElementById('bipe-result').innerHTML = '';
+    await refreshProdutos();
+  } catch(e) { toast('Erro: ' + e.message, 'err'); }
+}
+
+async function revincularCodigo(codigo, prodAtualId) {
+  if (allProdutos.length === 0) await refreshProdutos();
+  const options = allProdutos.filter(p => p.id !== prodAtualId)
+    .map(p => `<option value="${p.id}">${escHtml(p.nome)}</option>`).join('');
+  document.getElementById('bipe-result').innerHTML += `
+    <div id="revincular-box" style="margin-top:12px;background:#1a2a4a;border:1px solid #f39c12;border-radius:10px;padding:16px">
+      <div style="font-weight:700;color:#f39c12;margin-bottom:10px">🔄 Vincular código a outro produto</div>
+      <select id="revincular-select" style="width:100%;padding:8px;background:#0a1628;color:#fff;border:1px solid #3498db40;border-radius:6px;margin-bottom:10px">
+        ${options}
+      </select>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary" onclick="confirmarRevincular('${escJs(codigo)}')">✅ Vincular</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('revincular-box').remove()">✕ Cancelar</button>
+      </div>
+    </div>`;
+}
+
+async function confirmarRevincular(codigo) {
+  const novoProdId = parseInt(document.getElementById('revincular-select').value, 10);
+  try {
+    await api('POST', '/api/bipe', { codigo, produto_id: novoProdId, force: true });
+    toast('✅ Código revinculado!');
+    document.getElementById('bipe-result').innerHTML = '';
+  } catch(e) { toast('Erro: ' + e.message, 'err'); }
+}
+
+async function confirmarBipeAtual() {
+  if (!bipeAtual) return;
+  try {
+    const r = await api('POST', '/api/movimentacao', { produto_id: bipeAtual.produto.id, tipo: 'saida', quantidade: bipeAtual.qty, obs: 'Bipagem' });
+    bipeAtual = null;
+    if (r.alerta_reposicao) alertaReposicao(r.nome, r.estoque_atual, r.estoque_minimo);
+    await refreshProdutos();
+  } catch(e) { toast('Erro: ' + e.message, 'err'); }
+}
+
+function adjQty(id, delta) {
+  const el = document.getElementById(id);
+  const v = parseInt(el.value, 10) || 1;
+  el.value = Math.max(1, v + delta);
+}
+
+// Camera
+let codeReader = null;
+let activeStream = null;
+
+// ─── Selecionar tudo ao focar em campos de quantidade ─────────────────────────
+document.addEventListener('focus', (e) => {
+  if (e.target && e.target.type === 'number' && (e.target.id === 'bipe-qty' || e.target.id === 'novo-qty' || e.target.id === 'edit-mov-qty')) {
+    e.target.select();
+  }
+}, true);
+
+// ─── Histórico ────────────────────────────────────────────────────────────────
+let histPage = 0, histLimit = 30, histTotal = 0;
+
+async function loadHistorico() {
+  const tipo = document.getElementById('hist-tipo-filter').value;
+  const search = document.getElementById('hist-search').value.trim();
+  const params = new URLSearchParams({ limit: histLimit, offset: histPage * histLimit });
+  if (tipo) params.set('tipo', tipo);
+  if (search) params.set('search', search);
+  const data = await api('GET', '/api/movimentacoes?' + params);
+  histTotal = data.total;
+  const list = document.getElementById('hist-list');
+  if (!data.rows.length) {
+    list.innerHTML = '<div class="card" style="text-align:center;color:var(--text-muted)">Nenhum registro</div>';
+  } else {
+    list.innerHTML = data.rows.map(m => `
+      <div class="card" style="display:flex;align-items:center;gap:10px;margin-bottom:8px;padding:10px 14px">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(m.produto_nome)}</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:2px">${m.data}${m.obs ? ' · ' + escHtml(m.obs) : ''}</div>
+        </div>
+        <div style="text-align:right;white-space:nowrap">
+          <div style="color:${m.tipo==='entrada'?'#2ecc71':'#e74c3c'};font-size:13px">${m.tipo==='entrada'?'📥':'📤'} ${m.tipo}</div>
+          <div style="font-weight:700;font-size:16px">${m.quantidade}</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" style="padding:6px 8px" onclick="openEditMov(${m.id},'${escJs(m.produto_nome)}','${m.tipo}',${m.quantidade},'${escJs(m.obs||'')}')">✏️</button>
+      </div>
+    `).join('');
+  }
+  // Paginação
+  const pages = Math.ceil(histTotal / histLimit);
+  const pag = document.getElementById('hist-pagination');
+  pag.innerHTML = pages > 1 ? Array.from({length: Math.min(pages,10)}, (_,i) => 
+    `<button class="btn ${i===histPage?'btn-primary':'btn-ghost'} btn-sm" onclick="histPage=${i};loadHistorico()">${i+1}</button>`
+  ).join('') : '';
+}
+
+function openEditMov(id, nome, tipo, qty, obs) {
+  document.getElementById('edit-mov-id').value = id;
+  document.getElementById('edit-mov-nome').value = nome;
+  document.getElementById('edit-mov-tipo').value = tipo;
+  document.getElementById('edit-mov-qty').value = qty;
+  document.getElementById('edit-mov-obs').value = obs;
+  document.getElementById('edit-mov-modal').style.display = 'flex';
+}
+
+document.getElementById('edit-mov-save').addEventListener('click', async () => {
+  const id = document.getElementById('edit-mov-id').value;
+  const tipo = document.getElementById('edit-mov-tipo').value;
+  const qty = parseInt(document.getElementById('edit-mov-qty').value, 10);
+  const obs = document.getElementById('edit-mov-obs').value;
+  if (!qty || qty <= 0) { toast('Quantidade inválida', 'err'); return; }
+  try {
+    await api('PUT', '/api/movimentacao/' + id, { tipo, quantidade: qty, obs });
+    document.getElementById('edit-mov-modal').style.display = 'none';
+    toast('✅ Movimentação atualizada!');
+    await loadHistorico();
+    await refreshProdutos();
+  } catch(e) { toast('Erro: ' + e.message, 'err'); }
+});
+
+document.getElementById('edit-mov-delete').addEventListener('click', async () => {
+  if (!confirm('Excluir esta movimentação? O estoque será revertido.')) return;
+  const id = document.getElementById('edit-mov-id').value;
+  try {
+    await api('DELETE', '/api/movimentacao/' + id);
+    document.getElementById('edit-mov-modal').style.display = 'none';
+    toast('🗑️ Movimentação excluída');
+    await loadHistorico();
+    await refreshProdutos();
+  } catch(e) { toast('Erro: ' + e.message, 'err'); }
+});
+
+document.getElementById('hist-refresh-btn').addEventListener('click', () => { histPage = 0; loadHistorico(); });
+document.getElementById('hist-tipo-filter').addEventListener('change', () => { histPage = 0; loadHistorico(); });
+let histSearchTimer;
+document.getElementById('hist-search').addEventListener('input', () => {
+  clearTimeout(histSearchTimer);
+  histSearchTimer = setTimeout(() => { histPage = 0; loadHistorico(); }, 400);
+});
+
+// ─── Barcode detection: native BarcodeDetector → ZXing fallback ──────────────
+const useNativeDetector = ('BarcodeDetector' in window);
+let nativeDetector = null;
+if (useNativeDetector) {
+  try { nativeDetector = new BarcodeDetector({ formats: ['code_128','ean_13','ean_8','upc_a','upc_e','code_39','code_93','itf','qr_code','data_matrix','aztec','pdf417'] }); }
+  catch(_) { nativeDetector = new BarcodeDetector(); }
+}
+
+let nativeScanLoop = null;
+
+async function startNativeScan(video) {
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  let lastScan = 0;
+
+  async function tick() {
+    if (!activeStream) return;
+    if (video.readyState >= 2 && Date.now() - lastScan > 150) {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0);
+      try {
+        const results = await nativeDetector.detect(canvas);
+        if (results.length > 0) {
+          stopCamera();
+          lookupCode(results[0].rawValue);
+          return;
+        }
+      } catch(_) {}
+      lastScan = Date.now();
+    }
+    nativeScanLoop = requestAnimationFrame(tick);
+  }
+  nativeScanLoop = requestAnimationFrame(tick);
+}
+
+document.getElementById('camera-btn').addEventListener('click', async () => {
+  const area = document.getElementById('camera-area');
+  area.style.display = 'block';
+  try {
+    const constraints = {
+      video: {
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        advanced: [{ focusMode: 'continuous' }]
+      }
+    };
+
+    activeStream = await navigator.mediaDevices.getUserMedia(constraints);
+    const video = document.getElementById('video-preview');
+    video.srcObject = activeStream;
+
+    const track = activeStream.getVideoTracks()[0];
+    if (track?.applyConstraints) {
+      try { await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }); } catch(_) {}
+    }
+
+    if (useNativeDetector && nativeDetector) {
+      // 🚀 Chrome nativo — hardware-acelerado, lê instantaneamente
+      document.getElementById('scan-hint').textContent = '📷 Leitura nativa ativa';
+      await video.play().catch(() => {});
+      await startNativeScan(video);
+    } else {
+      // Fallback ZXing JS
+      document.getElementById('scan-hint').textContent = '📷 Aponte para o código';
+      if (typeof ZXing === 'undefined') { toast('Leitor não carregado', 'err'); return; }
+      codeReader = new ZXing.BrowserMultiFormatReader();
+      await codeReader.decodeFromStream(activeStream, 'video-preview', (result, err) => {
+        if (result) { stopCamera(); lookupCode(result.getText()); }
+      });
+    }
+  } catch(e) { toast('Câmera: ' + e.message, 'err'); }
+});
+
+document.getElementById('camera-stop-btn').addEventListener('click', stopCamera);
+
+// Tap-to-focus no vídeo
+document.getElementById('video-preview').addEventListener('click', async () => {
+  if (!activeStream) return;
+  const track = activeStream.getVideoTracks()[0];
+  if (!track) return;
+  try { await track.applyConstraints({ advanced: [{ focusMode: 'single-shot' }] }); }
+  catch(_) {}
+  setTimeout(async () => {
+    try { await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }); } catch(_) {}
+  }, 800);
+});
+
+// Foto via câmera nativa → BarcodeDetector
+document.getElementById('photo-capture-btn').addEventListener('click', () => {
+  document.getElementById('photo-capture-input').click();
+});
+document.getElementById('photo-capture-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  e.target.value = '';
+  toast('Analisando foto...', 'ok');
+
+  // Carregar imagem via <img> para máxima compatibilidade
+  const url = URL.createObjectURL(file);
+  const imgEl = new Image();
+  imgEl.src = url;
+  await new Promise(r => { imgEl.onload = r; });
+
+  const canvas = document.createElement('canvas');
+  canvas.width = imgEl.naturalWidth;
+  canvas.height = imgEl.naturalHeight;
+  canvas.getContext('2d').drawImage(imgEl, 0, 0);
+  URL.revokeObjectURL(url);
+
+  // Tenta BarcodeDetector nativo primeiro
+  if (useNativeDetector && nativeDetector) {
+    try {
+      const bmp = await createImageBitmap(canvas);
+      const results = await nativeDetector.detect(bmp);
+      if (results.length > 0) { lookupCode(results[0].rawValue); return; }
+    } catch(_) {}
+  }
+
+  // Fallback ZXing
+  if (typeof ZXing !== 'undefined') {
+    try {
+      const reader = new ZXing.BrowserMultiFormatReader();
+      const result = await reader.decodeFromCanvas(canvas);
+      if (result) { lookupCode(result.getText()); return; }
+    } catch(_) {}
+  }
+
+  toast('Nenhum código encontrado — tente com mais luz ou mais perto', 'err');
+});
+
+let torchOn = false;
+document.getElementById('torch-btn').addEventListener('click', async () => {
+  if (!activeStream) return;
+  const track = activeStream.getVideoTracks()[0];
+  if (!track) return;
+  try {
+    torchOn = !torchOn;
+    await track.applyConstraints({ advanced: [{ torch: torchOn }] });
+    document.getElementById('torch-btn').textContent = torchOn ? '🔦 ON' : '🔦 Lanterna';
+  } catch(_) { toast('Lanterna não suportada', 'warn'); }
+});
+
+// Zoom: tenta hardware primeiro, fallback pra CSS scale
+document.getElementById('zoom-slider').addEventListener('input', async (e) => {
+  const z = parseFloat(e.target.value);
+  document.getElementById('zoom-label').textContent = z.toFixed(1) + '×';
+  const video = document.getElementById('video-preview');
+  if (activeStream) {
+    const track = activeStream.getVideoTracks()[0];
+    try {
+      const caps = track.getCapabilities();
+      if (caps.zoom) {
+        const zoomVal = caps.zoom.min + (caps.zoom.max - caps.zoom.min) * ((z - 1) / 3);
+        await track.applyConstraints({ advanced: [{ zoom: zoomVal }] });
+        video.style.transform = '';
+        video.style.transformOrigin = '';
+        return;
+      }
+    } catch(_) {}
+  }
+  // Sem zoom de hardware disponível — orientar o usuário
+  if (z > 1.5) toast('Aproxime o celular do código para mais nitidez', 'ok');
+});
+
+function stopCamera() {
+  document.getElementById('camera-area').style.display = 'none';
+  if (nativeScanLoop) { cancelAnimationFrame(nativeScanLoop); nativeScanLoop = null; }
+  if (codeReader) { codeReader.reset(); codeReader = null; }
+  if (activeStream) { activeStream.getTracks().forEach(t => t.stop()); activeStream = null; }
+}
+
+// Name search
+const nameSearchInput = document.getElementById('name-search-input');
+nameSearchInput.addEventListener('input', () => {
+  const q = nameSearchInput.value.toLowerCase().trim();
+  const resultsEl = document.getElementById('name-search-results');
+  if (!q) { resultsEl.style.display = 'none'; return; }
+  const filtered = allProdutos.filter(p => p.nome.toLowerCase().includes(q));
+  if (filtered.length === 0) { resultsEl.style.display = 'none'; return; }
+  resultsEl.style.display = 'block';
+  resultsEl.innerHTML = filtered.slice(0, 20).map(p => {
+    const alerta = p.estoque_minimo > 0 && p.estoque_atual < p.estoque_minimo;
+    return `<div class="search-result-item" onclick="selectNameProduct(${p.id})">
+      <span>${escHtml(p.nome)}</span>
+      <span class="badge ${alerta ? 'badge-warn' : 'badge-ok'}">${p.estoque_atual}</span>
+    </div>`;
+  }).join('');
+});
+
+async function selectNameProduct(id) {
+  document.getElementById('name-search-results').style.display = 'none';
+  nameSearchInput.value = '';
+  const produto = allProdutos.find(p => p.id === id);
+  if (!produto) return;
+  const alerta = produto.estoque_minimo > 0 && produto.estoque_atual < produto.estoque_minimo;
+  document.getElementById('name-selected-card').innerHTML = `
+    <div class="result-card found" style="margin-top:12px">
+      <div class="product-name">${escHtml(produto.nome)}</div>
+      <div style="margin-bottom:12px">
+        Estoque atual: <span class="badge ${alerta ? 'badge-warn' : 'badge-ok'}">${produto.estoque_atual}</span>
+        ${produto.estoque_minimo > 0 ? `<span style="color:var(--text-muted);font-size:13px"> / mín ${produto.estoque_minimo}</span>` : ''}
+      </div>
+      <div class="qty-control">
+        <button class="qty-btn" onclick="adjQty('ns-qty', -1)">−</button>
+        <input type="number" id="ns-qty" value="1" min="1" style="width:80px;text-align:center">
+        <button class="qty-btn" onclick="adjQty('ns-qty', 1)">+</button>
+      </div>
+      <div class="action-row">
+        ${userRole === 'admin' ? `<button class="btn btn-success" onclick="registrarNs(${produto.id}, 'entrada')">📥 Entrada</button>` : ''}
+        <button class="btn btn-danger" onclick="registrarNs(${produto.id}, 'saida')">📤 Saída</button>
+      </div>
+    </div>`;
+}
+
+async function registrarNs(prodId, tipo) {
+  const qty = parseInt(document.getElementById('ns-qty').value, 10);
+  if (isNaN(qty) || qty <= 0) { toast('Quantidade inválida', 'err'); return; }
+  try {
+    const r = await api('POST', '/api/movimentacao', { produto_id: prodId, tipo, quantidade: qty, obs: 'Manual' });
+    toast(`${tipo === 'entrada' ? '📥' : '📤'} ${tipo === 'entrada' ? 'Entrada' : 'Saída'} registrada! Estoque: ${r.estoque_atual}`);
+    document.getElementById('name-selected-card').innerHTML = '';
+    await refreshProdutos();
+  } catch(e) { toast('Erro: ' + e.message, 'err'); }
+}
+
+// ─── PRODUTOS ────────────────────────────────────────────────────────────────
+let produtosAll = [];
+let produtosFilter = '';
+let editingId = null;
+
+async function loadProdutos() {
+  try {
+    produtosAll = await api('GET', '/api/produtos');
+    allProdutos = produtosAll;
+    renderProdutosTable();
+  } catch(e) { toast('Erro: ' + e.message, 'err'); }
+}
+
+document.getElementById('produtos-search').addEventListener('input', e => {
+  produtosFilter = e.target.value.toLowerCase();
+  renderProdutosTable();
+});
+
+function renderProdutosTable() {
+  const filtered = produtosAll.filter(p => p.nome.toLowerCase().includes(produtosFilter));
+  const tbody = document.getElementById('produtos-tbody');
+  if (filtered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:24px">Nenhum produto encontrado</td></tr>';
+    return;
+  }
+  tbody.innerHTML = filtered.map(p => {
+    if (editingId === p.id) return editRow(p);
+    const alerta = p.estoque_minimo > 0 && p.estoque_atual < p.estoque_minimo;
+    return `<tr>
+      <td>${escHtml(p.nome)}</td>
+      <td><span class="badge ${alerta ? 'badge-warn' : 'badge-ok'}">${p.estoque_atual}</span></td>
+      <td>${p.estoque_minimo}</td>
+      <td style="color:${p.qtd_compra > 0 ? '#3498db' : '#555'}">${p.qtd_compra > 0 ? p.qtd_compra : '—'}</td>
+      <td>
+        <button class="btn btn-ghost btn-sm" onclick="startEdit(${p.id})">✏️ Editar</button>
+        <button class="btn btn-ghost btn-sm" onclick="verCodigos(${p.id}, '${escJs(p.nome)}')">🔗 Códigos</button>
+        <button class="btn btn-ghost btn-sm" onclick="gerarEtiqueta(${p.id}, '${escJs(p.nome)}')">🏷️ Etiqueta</button>
+        <button class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="deleteProduto(${p.id}, '${escJs(p.nome)}')">🗑️</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function editRow(p) {
+  return `<tr class="edit-row">
+    <td><input type="text" id="edit-nome" value="${escHtml(p.nome)}" style="width:100%"></td>
+    <td><input type="number" id="edit-atual" value="${p.estoque_atual}" min="0" style="width:70px"></td>
+    <td><input type="number" id="edit-min" value="${p.estoque_minimo}" min="0" style="width:70px"></td>
+    <td><input type="number" id="edit-compra" value="${p.qtd_compra||0}" min="0" placeholder="qtd compra" style="width:90px" title="Quantidade a pedir quando estiver em alerta"></td>
+    <td>
+      <button class="btn btn-primary btn-sm" onclick="saveEdit(${p.id})">💾 Salvar</button>
+      <button class="btn btn-ghost btn-sm" onclick="cancelEdit()">✕</button>
+    </td>
+  </tr>`;
+}
+
+async function verCodigos(prodId, nome) {
+  const codigos = await api('GET', '/api/codigos/' + prodId);
+  const lista = codigos.length === 0
+    ? '<p style="color:#aaa;font-size:13px">Nenhum código vinculado.</p>'
+    : codigos.map(c => `
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #ffffff10">
+          <code style="flex:1;font-size:13px;color:#3498db">${escHtml(c.codigo)}</code>
+          <button class="btn btn-ghost btn-sm" style="color:var(--danger);padding:2px 8px" onclick="deleteCodigo(${c.id}, '${escJs(c.codigo)}', ${prodId}, '${escJs(nome)}')">🗑️</button>
+        </div>`).join('');
+  // Show in modal-style overlay on page
+  const existing = document.getElementById('codigos-modal');
+  if (existing) existing.remove();
+  const el = document.createElement('div');
+  el.id = 'codigos-modal';
+  el.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center';
+  el.innerHTML = `
+    <div style="background:#1a2a4a;border:1px solid #3498db40;border-radius:14px;padding:24px;max-width:420px;width:90%">
+      <div style="font-weight:700;font-size:16px;margin-bottom:16px">🔗 Códigos de ${escHtml(nome)}</div>
+      <div id="codigos-lista">${lista}</div>
+      <button class="btn btn-ghost" style="margin-top:16px;width:100%" onclick="document.getElementById('codigos-modal').remove()">Fechar</button>
+    </div>`;
+  document.body.appendChild(el);
+}
+
+async function deleteCodigo(codigoId, codigo, prodId, nome) {
+  if (!confirm(`Remover código ${codigo}?`)) return;
+  await api('DELETE', '/api/codigo/' + codigoId);
+  toast('Código removido');
+  verCodigos(prodId, nome); // refresh modal
+}
+
+function startEdit(id) { editingId = id; renderProdutosTable(); }
+function cancelEdit() { editingId = null; renderProdutosTable(); }
+
+async function saveEdit(id) {
+  const nome = document.getElementById('edit-nome').value.trim();
+  const atual = parseInt(document.getElementById('edit-atual').value, 10);
+  const min = parseInt(document.getElementById('edit-min').value, 10);
+  const compra = parseInt(document.getElementById('edit-compra').value || '0', 10);
+  if (!nome) { toast('Nome obrigatório', 'err'); return; }
+  try {
+    await api('PUT', '/api/produto/' + id, { nome, estoque_atual: atual, estoque_minimo: min, qtd_compra: compra });
+    editingId = null;
+    toast('✅ Produto atualizado');
+    await loadProdutos();
+  } catch(e) { toast('Erro: ' + e.message, 'err'); }
+}
+
+async function deleteProduto(id, nome) {
+  if (!confirm(`Excluir "${nome}"?`)) return;
+  try {
+    await api('DELETE', '/api/produto/' + id);
+    toast('🗑️ Produto excluído');
+    await loadProdutos();
+  } catch(e) { toast('Erro: ' + e.message, 'err'); }
+}
+
+// New produto form
+document.getElementById('new-produto-btn').addEventListener('click', () => {
+  const form = document.getElementById('new-produto-form');
+  form.style.display = form.style.display === 'none' ? 'block' : 'none';
+  if (form.style.display === 'block') document.getElementById('new-nome').focus();
+});
+document.getElementById('cancel-new-produto').addEventListener('click', () => {
+  document.getElementById('new-produto-form').style.display = 'none';
+});
+document.getElementById('save-new-produto').addEventListener('click', async () => {
+  const nome = document.getElementById('new-nome').value.trim();
+  const min = parseInt(document.getElementById('new-min').value, 10) || 0;
+  if (!nome) { toast('Nome obrigatório', 'err'); return; }
+  try {
+    await api('POST', '/api/produto', { nome, estoque_minimo: min });
+    toast('✅ Produto criado');
+    document.getElementById('new-nome').value = '';
+    document.getElementById('new-min').value = '0';
+    document.getElementById('new-produto-form').style.display = 'none';
+    await loadProdutos();
+  } catch(e) { toast('Erro: ' + e.message, 'err'); }
+});
+
+// Label modal
+async function gerarEtiqueta(id, nome) {
+  try {
+    const r = await api('POST', '/api/etiqueta/' + id);
+    document.getElementById('modal-produto-nome').textContent = nome;
+    document.getElementById('modal-produto-codigo').textContent = r.codigo;
+    document.getElementById('modal-barcode-svg').innerHTML = r.svg;
+    document.getElementById('label-modal').classList.add('open');
+  } catch(e) { toast('Erro: ' + e.message, 'err'); }
+}
+document.getElementById('close-modal-btn').addEventListener('click', () => {
+  document.getElementById('label-modal').classList.remove('open');
+});
+document.getElementById('label-modal').addEventListener('click', e => {
+  if (e.target === document.getElementById('label-modal'))
+    document.getElementById('label-modal').classList.remove('open');
+});
+document.getElementById('print-btn').addEventListener('click', () => window.print());
+
+// ─── COMPRAS ─────────────────────────────────────────────────────────────────
+async function loadCompras() {
+  try {
+    const rows = await api('GET', '/api/compras');
+    const tbody = document.getElementById('compras-tbody');
+    if (rows.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:24px">✅ Estoque OK!</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows.map(r => {
+      const done = !!r.pedido_em;
+      return `
+      <tr id="compra-row-${r.id}" class="${done ? 'row-done' : ''}">
+        <td>${escHtml(r.nome)}</td>
+        <td><span class="badge badge-warn">${r.estoque_atual}</span></td>
+        <td>${r.estoque_minimo}</td>
+        <td class="falta-cell">−${r.falta}</td>
+        <td style="color:#3498db;font-weight:700">${r.qtd_compra > 0 ? r.qtd_compra : r.falta}</td>
+        <td><button id="btn-pedido-${r.id}" class="btn btn-ghost btn-sm" onclick="markPedido(${r.id})" style="${done ? 'color:#aaa' : ''}">${done ? '✅ Pedido feito' : '🛒 Fazer pedido'}</button></td>
+      </tr>`}).join('');
+  } catch(e) { toast('Erro: ' + e.message, 'err'); }
+}
+
+async function markPedido(id) {
+  const row = document.getElementById('compra-row-' + id);
+  const btn = document.getElementById('btn-pedido-' + id);
+  if (!row || !btn) return;
+  try {
+    const r = await api('POST', '/api/compras/' + id + '/pedido');
+    const done = !!r.pedido_em;
+    row.classList.toggle('row-done', done);
+    btn.textContent = done ? '✅ Pedido feito' : '🛒 Fazer pedido';
+    btn.style.color = done ? '#aaa' : '';
+  } catch(e) { toast('Erro ao salvar pedido: ' + e.message, 'err'); }
+}
+
+document.getElementById('whatsapp-btn').addEventListener('click', async () => {
+  try {
+    const r = await api('GET', '/api/compras/whatsapp');
+    const encoded = encodeURIComponent(r.text);
+    window.open('https://wa.me/?text=' + encoded, '_blank');
+  } catch(e) { toast('Erro: ' + e.message, 'err'); }
+});
+
+// ─── Util ─────────────────────────────────────────────────────────────────────
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escJs(s) {
+  return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+refreshProdutos();
+</script>
+</body>
+</html>
